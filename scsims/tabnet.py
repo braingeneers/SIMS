@@ -24,6 +24,7 @@ class TabNetLightning(pl.LightningModule):
     ) -> None:
         super().__init__()
 
+        self.__dict__.update(kwargs)
         self.network = tabnet.tab_network.TabNet(*args, **kwargs)
         self.reducing_matrix = create_explain_matrix(
             self.network.input_dim,
@@ -36,31 +37,88 @@ class TabNetLightning(pl.LightningModule):
         return self.base_model.forward(x)
 
     def _compute_loss(self, y, y_hat):
-
         # If user doesn't specify, just set to cross_entropy
         if self.loss is None:
             self.loss = F.cross_entropy 
 
-        return self.loss(y, y_hat, weight=self.weights)    
+        return self.loss(y, y_hat, weight=self.weights)
 
-    def _step(self, y, batch):
-        output, M_loss = self.network(batch)
+    def _step(self, batch):
+        x, y = batch
+        y_hat, M_loss = self.network(x)
 
-        loss = self.compute_loss(output, y)
+        loss = self._compute_loss(y_hat, y)
+
         # Add the overall sparsity loss
-        loss = loss - self.lambda_sparse * M_loss
+        loss = loss - self.network.lambda_sparse * M_loss
+        return y, y_hat, loss
 
     def training_step(self, batch, batch_idx):
-        pass
+        y, y_hat, loss = self._step(batch)
+
+        self.log("train_loss", loss, logger=True, on_epoch=True, on_step=True)
+        self._compute_metrics(y_hat, y, 'train')
+
+        return loss 
 
     def validation_step(self, batch, batch_idx):
-        pass 
+        y, y_hat, loss = self._step(batch)
+
+        self.log("val_loss", loss, logger=True, on_epoch=True, on_step=True)
+        self._compute_metrics(y_hat, y, 'val')
 
     def test_step(self, batch, batch_idx):
-        pass 
+        y, y_hat, loss = self._step(batch)
+
+        self.log("test_loss", loss, logger=True, on_epoch=True, on_step=True)
+        self._compute_metrics(y_hat, y, 'test')
 
     def configure_optimizers(self):
-        pass 
+        optimizer = self.optim_params.pop('optimizer')
+        optimizer = optimizer(self.parameters(), **self.optim_params)
+
+        return optimizer
+    
+    def _compute_metrics(self, 
+        y_hat: torch.Tensor, 
+        y: torch.Tensor, 
+        tag: str, 
+        on_epoch=True, 
+        on_step=False,
+    ):
+        """
+        Compute metrics for the given batch
+
+        :param y_hat: logits of model
+        :type y_hat: torch.Tensor
+        :param y: tensor of labels
+        :type y: torch.Tensor
+        :param tag: log name, to specify train/val/test batch calculation
+        :type tag: str
+        :param on_epoch: log on epoch, defaults to True
+        :type on_epoch: bool, optional
+        :param on_step: log on step, defaults to True
+        :type on_step: bool, optional
+        """
+        for name, metric in self.metrics.items():
+            if self.weighted_metrics: # We dont consider class support in calculation
+                val = metric(y_hat, y, average='weighted', num_classes=self.y_hat_dim)
+                self.log(
+                    f"weighted_{tag}_{name}", 
+                    val, 
+                    on_epoch=on_epoch, 
+                    on_step=on_step,
+                    logger=True,
+                )
+            else:
+                val = metric(y_hat, y)
+                self.log(
+                    f"{tag}_{name}", 
+                    val, 
+                    on_epoch=on_epoch, 
+                    on_step=on_step,
+                    logger=True,
+                )
 
     def explain(self, loader, normalize=False):
         self.network.eval()
@@ -127,7 +185,6 @@ class TabNetLightning(pl.LightningModule):
         shutil.rmtree(path)
         print(f"Successfully saved model at {path}.zip")
         return f"{path}.zip"
-
 
     def load_model(self, filepath):
         try:

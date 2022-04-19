@@ -1,6 +1,5 @@
-import sys
-import os
 import pathlib 
+import os 
 from typing import *
 
 import torch
@@ -12,12 +11,8 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from .neural import GeneClassifier
-from .train import UploadCallback
+from .model import GeneClassifier
 from .data import generate_dataloaders
-
-import sys, os 
-from helper import gene_intersection, download
 
 class DataModule(pl.LightningDataModule):
     """

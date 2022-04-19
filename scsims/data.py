@@ -17,7 +17,7 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 
-class GeneExpressionData(Dataset):
+class CSVData(Dataset):
     """
     Defines a PyTorch Dataset for a CSV too large to fit in memory. 
     """
@@ -35,7 +35,7 @@ class GeneExpressionData(Dataset):
         **kwargs, # To handle extraneous inputs
     ):
         """
-        Initialization method for GeneExpressionData
+        Initialization method for CSVData
 
         :param filename: Path to csv data file, where rows are samples and columns are features
         :type filename: str
@@ -233,7 +233,7 @@ class CollateLoader(DataLoader):
         """
         Initializes a CollateLoader for efficient numerical batch-wise transformations
 
-        :param dataset: GeneExpressionDataset to create DataLoader from
+        :param dataset: CSVDataset to create DataLoader from
         :type dataset: Type[Dataset]
         :param refgenes: Optional, list of columns to take intersection with , defaults to None
         :type refgenes: List[str], optional
@@ -308,7 +308,7 @@ def _collate_with_refgenes(
     """
     Collate minibatch of samples where we're intersecting the columns between refgenes and currgenes,
 
-    :param sample: List of samples from GeneExpressionData object
+    :param sample: List of samples from CSVData object
     :type sample: List[tuple]
     :param refgenes: List of reference genes
     :type refgenes: List[str]
@@ -335,7 +335,7 @@ def _standard_collate(
     """
     Collate minibatch of samples, optionally normalizing and transposing. 
 
-    :param sample: List of GeneExpressionData items to collate
+    :param sample: List of CSVData items to collate
     :type sample: List[tuple]
     :param normalize: boolean, indicates if we should transpose the minibatch (in the case of incorrectly formatted .csv data)
     :type normalize: bool
@@ -380,7 +380,7 @@ def clean_sample(
     currgenes: List[str],
 ) -> torch.Tensor:
     # currgenes and refgenes are already sorted
-    # Passed froem calculate_intersection
+    # Passed from calculate_intersection
     """
     Remove uneeded gene columns for given sample.
 
@@ -497,9 +497,10 @@ def generate_single_dataset(
     trainsplit, valsplit = train_test_split(current_labels, stratify=current_labels, test_size=test_prop)
     trainsplit, testsplit = train_test_split(trainsplit, stratify=trainsplit, test_size=test_prop)
 
-    if suffix == '.h5ad':
-        data = sc.read_h5ad(datafile)
-
+    if suffix == '.h5ad' or suffix == '.h5':
+        data = (
+            sc.read_h5ad(datafile) if suffix == '.h5ad' else sc.read_h5(datafile)
+        )
         train, val, test = (
             NumpyStream(
                 matrix=data.X[split.index],
@@ -510,14 +511,12 @@ def generate_single_dataset(
             )
             for split in [trainsplit, valsplit, testsplit]
         )
-        
     else:
         if suffix != '.csv' or suffix != '.tsv':
-            warnings.warn(f'Extension {suffix} not recognized, \
-                interpreting as .csv. To silence this warning, pass in explicit file types.')
+            warnings.warn(f'Interpreting {suffix = } for {datafile = } as delimited text file')
 
         train, val, test = (
-            GeneExpressionData(
+            CSVData(
                 filename=datafile,
                 labelname=labelfile,
                 class_label=class_label,
@@ -549,7 +548,6 @@ def generate_single_dataloader(
     loaders = (
         CollateLoader(
                 dataset=dataset, 
-                currgenes=(dataset.columns if 'refgenes' in kwargs.keys() else None),
                 *args,
                 **kwargs,
             )
@@ -583,9 +581,8 @@ def generate_dataloaders(
     if len(datafiles) != len(labelfiles):
         raise ValueError("Must have same number of datafiles and labelfiles")
     
-    # We dont need this error check, just handle it later.
-    if collocate and len(datafiles) == 1:
-        warnings.warn("Cannot collocate dataloaders with only one dataset file, ignoring. Pass collocate=False to silence this warning.")
+    if not collocate and len(datafiles) > 1:
+        warnings.warn(f"{collocate =}, so multiple files will return multiple DataLoaders and cannot be trained sequentially with PyTorch-Lightning")
 
     train, val, test = [], [], []
     for datafile, labelfile in zip(datafiles, labelfiles):
@@ -605,12 +602,21 @@ def generate_dataloaders(
         val = val[0]
         test = test[0]
 
-    if collocate and len(datafiles) > 1: 
+    if collocate and len(datafiles) > 1:
         # Join these together into sequential loader if requested, shouldn't error if only one training file passed, though
         train, val, test = SequentialLoader(train), SequentialLoader(val), SequentialLoader(test)
 
     return train, val, test 
 
+def calculate_intersection(*lists: List[Any]):
+    """
+    Calculate set intersection of input lists
 
+    :param lists: Arbitrary number of list-like to calculate intersection from
+    """
 
-
+    if len(lists) == 1:
+        return lists
+    else:
+        res = set(lists[0]).intersection(lists[1:])
+        return sorted(list(res))

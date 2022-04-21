@@ -6,12 +6,14 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torchmetrics.functional import accuracy, precision, recall 
 from pytorch_tabnet.tab_network import TabNet
+from os.path import join 
+from downloaders import download 
 
 # Set all seeds for reproducibility
 class GeneClassifier(pl.LightningModule):
     def __init__(
         self, 
-        input_dim: int, 
+        input_dim: int,
         output_dim: int,
         base_model=None,
         optim_params: Dict[str, float]={
@@ -25,6 +27,7 @@ class GeneClassifier(pl.LightningModule):
             'recall': recall,
         },
         weighted_metrics=False,
+        weights=None,
         *args,
         **kwargs,
     ):
@@ -52,11 +55,15 @@ class GeneClassifier(pl.LightningModule):
         self.optim_params = optim_params
         self.metrics = metrics
         self.weighted_metrics = weighted_metrics
+        self.weights = weights 
+            
+        print(f'{self.weights = }')
 
         if base_model is None:
             self.base_model = TabNetGeneClassifier(
                 input_dim=input_dim,
                 output_dim=output_dim,
+                weights=weights,
                 *args,
                 **kwargs
             )
@@ -79,19 +86,20 @@ class GeneClassifier(pl.LightningModule):
         :type batch_idx: int
         :return: label tensor, logits tensor, loss 
         :rtype: Tuple[torch.Tensor, torch.Tensor, float]
-        """        
+        """
+
         if isinstance(self.base_model, TabNetGeneClassifier):
             # Hacky and annoying, but the extra M_loss from TabNet means we need to handle this specific case 
             y_hat, y, loss = self.base_model._step(batch, batch_idx)
         else:
             x, y = batch
             y_hat = self(x)
-            loss = F.cross_entropy(y_hat, y)
+            loss = F.cross_entropy(y_hat, y, weight=self.weights)
 
-        return y, y_hat, loss 
+        return y, y_hat, loss
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int):
-        y, y_hat, loss = self._step(batch, batch_idx)        
+        y, y_hat, loss = self._step(batch, batch_idx)
 
         self.log("train_loss", loss, logger=True, on_epoch=True, on_step=True)
         self._compute_metrics(y_hat, y, 'train')
@@ -99,7 +107,7 @@ class GeneClassifier(pl.LightningModule):
         return loss
     
     def validation_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int):
-        y, y_hat, loss = self._step(batch, batch_idx)    
+        y, y_hat, loss = self._step(batch, batch_idx)
 
         self.log("val_loss", loss, logger=True, on_epoch=True, on_step=True)
         self._compute_metrics(y_hat, y, 'val')
@@ -166,8 +174,9 @@ class TabNetGeneClassifier(TabNet):
     Just a simple wrapper to only return the regular output instead the output and M_loss as defined in the tabnet paper.
     This allows me to use a single train/val/test loop for both models. 
     """
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, weights, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.weights = weights
 
     def forward(self, x):
         out, M_loss = super().forward(x)
@@ -176,9 +185,35 @@ class TabNetGeneClassifier(TabNet):
     # leaving this in case we ever want to add lambda_sparse parameter, should be easy 
     def _step(self, batch, batch_idx):
         x, y = batch
+
+        # Ignore sparsity M_loss for now, data is already sparse
         y_hat, _ = self.forward(x)
-        
-        # Add extra sparsity as required by TabNet 
-        loss = F.cross_entropy(y_hat, y)
+        loss = F.cross_entropy(y_hat, y, weight=self.weights)
 
         return y_hat, y, loss
+
+class UploadCallback(pl.callbacks.Callback):
+    """Custom PyTorch callback for uploading model checkpoints to the braingeneers S3 bucket.
+    
+    Parameters:
+    path: Local path to folder where model checkpoints are saved
+    desc: Description of checkpoint that is appended to checkpoint file name on save
+    upload_path: Subpath in braingeneersdev/jlehrer/ to upload model checkpoints to
+    """
+    
+    def __init__(self, path, desc, upload_path='model_checkpoints') -> None:
+        super().__init__()
+        self.path = path 
+        self.desc = desc
+        self.upload_path = upload_path
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        epoch = trainer.current_epoch
+        if epoch % 10 == 0: # Save every ten epochs
+            checkpoint = f'checkpoint-{epoch}-desc-{self.desc}.ckpt'
+            trainer.save_checkpoint(join(self.path, checkpoint))
+            print(f'Uploading checkpoint at epoch {epoch}')
+            upload(
+                join(self.path, checkpoint),
+                join('jlehrer', self.upload_path, checkpoint)
+            )

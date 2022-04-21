@@ -1,4 +1,5 @@
 import linecache
+from multiprocessing.sharedctypes import Value 
 from typing import *
 from functools import cached_property, partial
 from itertools import chain 
@@ -10,14 +11,17 @@ import pandas as pd
 import torch
 import numpy as np
 import scanpy as sc 
-import pytorch_lightning as pl 
 
-from scipy.sparse import issparse 
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
+from scipy.sparse import issparse
+import pytorch_lightning as pl 
 
-class CSVData(Dataset):
+import sys, os 
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
+class GeneExpressionData(Dataset):
     """
     Defines a PyTorch Dataset for a CSV too large to fit in memory. 
     """
@@ -35,7 +39,16 @@ class CSVData(Dataset):
         **kwargs, # To handle extraneous inputs
     ):
         """
-        Initialization method for CSVData
+        Initialization method for GeneExpressionData.
+
+        The filename contains a delimited text file where ROWS are cells and the COLUMNS are the genes measured. The labelname is a delimited text file 
+        containing the class_label column, and optionally an index_col. 
+
+        Since dropping rows we don't want to train on is nontrivial in the case of the csv, since the csv would have to be read into memory and modified (often this is not computationaly feasible),
+        we instead just drop the rows in the labelname file. Then the index_col column specifies the actual row numbers of the samples we want. Equivalently, the index_col is the numeric equivalent to 
+        the labelname index after dropping the unwanted rows.
+
+        For this reason, index_col must be purely numeric, as the i-th entry of labelfile.loc[:, index_col] contains the actual line number of the i-th sample in the data file. 
 
         :param filename: Path to csv data file, where rows are samples and columns are features
         :type filename: str
@@ -90,8 +103,10 @@ class CSVData(Dataset):
             idxs = range(idx.start, idx.stop, step)
             return [self[i] for i in idxs]
 
-        # The actual line in the datafile to get, corresponding to the number in the self.index_col values, if we need to
-        data_index = (self._labeldf.loc[idx, self.index_col] if self.index_col is not None else idx)
+        # The actual line in the datafile to get, corresponding to the number in the self.index_col values, otherwise the line at index "idx"
+        data_index = (
+            self._labeldf.loc[idx, self.index_col] if self.index_col is not None else idx
+        )
 
         # get gene expression for current cell from csv file
         # We skip some lines because we're reading directly from 
@@ -179,12 +194,8 @@ class NumpyStream(Dataset):
         if labelfile is not None and class_label is None:
             raise ValueError(f"If labelfile is passed, column to corresponding class must be passed in class_label. Got {class_label = }.")
 
-        # If we're using labels but the user passes a class label, just warn 
-        if labels is not None and class_label is not None:
-            warnings.warn(f"{class_label = } but labels passed, using labels and ignoring class_label. To silence this warning remove the class_labels positional or keyword argument.")
-
         if columns is None:
-            warnings.warn(f"{self.__class__.__name__} initialized without columns. This will error if training with multiple Datasets with posssibly columns.")
+            warnings.warn(f"{self.__class__.__name__} initialized without columns. This will error if training with multiple Datasets with potentially different columns.")
 
         self.data = matrix
         self.labelfile = labelfile
@@ -233,7 +244,7 @@ class CollateLoader(DataLoader):
         """
         Initializes a CollateLoader for efficient numerical batch-wise transformations
 
-        :param dataset: CSVDataset to create DataLoader from
+        :param dataset: GeneExpressionDataset to create DataLoader from
         :type dataset: Type[Dataset]
         :param refgenes: Optional, list of columns to take intersection with , defaults to None
         :type refgenes: List[str], optional
@@ -308,7 +319,7 @@ def _collate_with_refgenes(
     """
     Collate minibatch of samples where we're intersecting the columns between refgenes and currgenes,
 
-    :param sample: List of samples from CSVData object
+    :param sample: List of samples from GeneExpressionData object
     :type sample: List[tuple]
     :param refgenes: List of reference genes
     :type refgenes: List[str]
@@ -335,7 +346,7 @@ def _standard_collate(
     """
     Collate minibatch of samples, optionally normalizing and transposing. 
 
-    :param sample: List of CSVData items to collate
+    :param sample: List of GeneExpressionData items to collate
     :type sample: List[tuple]
     :param normalize: boolean, indicates if we should transpose the minibatch (in the case of incorrectly formatted .csv data)
     :type normalize: bool
@@ -380,7 +391,7 @@ def clean_sample(
     currgenes: List[str],
 ) -> torch.Tensor:
     # currgenes and refgenes are already sorted
-    # Passed from calculate_intersection
+    # Passed froem calculate_intersection
     """
     Remove uneeded gene columns for given sample.
 
@@ -473,6 +484,7 @@ def generate_single_dataset(
     class_label: str,
     test_prop=0.2,
     sep=',',
+    subset=None,
     *args,
     **kwargs,
 ) -> Tuple[Dataset, Dataset, Dataset]:
@@ -490,17 +502,19 @@ def generate_single_dataset(
     :return: train, val, test Datasets
     :rtype: Tuple[Dataset, Dataset, Dataset]
     """    
-    current_labels = pd.read_csv(labelfile, sep=sep).loc[:, class_label]
     suffix = pathlib.Path(datafile).suffix
+
+    if subset is not None:
+        current_labels = pd.read_csv(labelfile, sep=sep).loc[subset, class_label]
+    else:
+        current_labels = pd.read_csv(labelfile, sep=sep).loc[:, class_label]
 
     # Make stratified split on labels
     trainsplit, valsplit = train_test_split(current_labels, stratify=current_labels, test_size=test_prop)
     trainsplit, testsplit = train_test_split(trainsplit, stratify=trainsplit, test_size=test_prop)
 
-    if suffix == '.h5ad' or suffix == '.h5':
-        data = (
-            sc.read_h5ad(datafile) if suffix == '.h5ad' else sc.read_h5(datafile)
-        )
+    if suffix == '.h5ad':
+        data = sc.read_h5ad(datafile)
         train, val, test = (
             NumpyStream(
                 matrix=data.X[split.index],
@@ -511,12 +525,14 @@ def generate_single_dataset(
             )
             for split in [trainsplit, valsplit, testsplit]
         )
+        
     else:
-        if suffix != '.csv' or suffix != '.tsv':
-            warnings.warn(f'Interpreting {suffix = } for {datafile = } as delimited text file')
+        if suffix != '.csv' and suffix != '.tsv':
+            print(f'Extension {suffix} not recognized, \
+                interpreting as .csv. To silence this warning, pass in explicit file types.')
 
         train, val, test = (
-            CSVData(
+            GeneExpressionData(
                 filename=datafile,
                 labelname=labelfile,
                 class_label=class_label,
@@ -524,7 +540,7 @@ def generate_single_dataset(
                 *args,
                 **kwargs,
             )
-            for indices in [trainsplit, valsplit, testsplit]  
+            for indices in [trainsplit.index, valsplit.index, testsplit.index]  
         )
 
     return train, val, test 
@@ -602,21 +618,41 @@ def generate_dataloaders(
         val = val[0]
         test = test[0]
 
-    if collocate and len(datafiles) > 1:
+    if collocate and len(datafiles) > 1: 
         # Join these together into sequential loader if requested, shouldn't error if only one training file passed, though
         train, val, test = SequentialLoader(train), SequentialLoader(val), SequentialLoader(test)
 
     return train, val, test 
 
-def calculate_intersection(*lists: List[Any]):
+def total_class_weights(
+    labelfiles: List[str],
+    class_label: str,
+    device: str=None,
+) -> torch.Tensor:
     """
-    Calculate set intersection of input lists
+    Compute class weights for the entire label set 
 
-    :param lists: Arbitrary number of list-like to calculate intersection from
+    :param labelfiles: List of absolute paths to label files
+    :type labelfiles: List[str]
+    :param class_label: Target label to calculate weight distribution on 
+    :type class_label: str
+    :return: Tensor of class weights for model training
+    :rtype: torch.Tensor
     """
+    comb = []
 
-    if len(lists) == 1:
-        return lists
-    else:
-        res = set(lists[0]).intersection(lists[1:])
-        return sorted(list(res))
+    for file in labelfiles:
+        comb.extend(
+            pd.read_csv(file).loc[:, class_label].values
+        )
+
+    weights = torch.from_numpy(compute_class_weight(
+            classes=np.unique(comb),
+            y=comb,
+            class_weight='balanced',
+        )).float()
+
+    return (
+        weights.to(device) if device is not None else weights
+    )
+

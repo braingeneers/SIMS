@@ -1,5 +1,6 @@
+import sys
+import os
 import pathlib 
-import os 
 from typing import *
 
 import torch
@@ -11,8 +12,15 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from .model import GeneClassifier
+from .neural import GeneClassifier
+from .train import UploadCallback
 from .data import generate_dataloaders
+
+import sys, os 
+from os.path import join, dirname, abspath 
+sys.path.append(join(dirname(abspath(__file__)), '..', '..'))
+
+from helper import gene_intersection, download
 
 class DataModule(pl.LightningDataModule):
     """
@@ -126,8 +134,12 @@ def generate_trainer(
     weighted_metrics: bool,
     batch_size: int,
     num_workers: int,
-    optim_params: Dict[str, Any],
+    optim_params: Dict[str, Any]={
+        'optimizer': torch.optim.Adam,
+        'lr': 0.02,
+    },
     wandb_name='',
+    weights=None,
     *args,
     **kwargs,
 ):
@@ -181,12 +193,10 @@ def generate_trainer(
         labelfiles=labelfiles,
     )
 
-    refgenes = gene_intersection()
     module = DataModule(
         datafiles=datafiles, 
         labelfiles=labelfiles, 
         class_label=class_label, 
-        refgenes=refgenes,
         batch_size=batch_size,
         num_workers=num_workers,
         *args,
@@ -194,24 +204,17 @@ def generate_trainer(
     )
 
     model = GeneClassifier(
-        input_dim=len(refgenes),
-        output_dim=19,
+        input_dim=module.num_features,
+        output_dim=module.num_labels,
         weighted_metrics=weighted_metrics,
-        optim_params=optim_params
+        optim_params=optim_params,
+        weights=weights,
     )
     
     trainer = pl.Trainer(
         gpus=(1 if torch.cuda.is_available() else 0),
         auto_lr_find=False,
-        gradient_clip_val=0.5,
         logger=wandb_logger,
-        callbacks=[
-            uploadcallback, 
-            earlystoppingcallback,
-        ],
-        max_epochs=kwargs['max_epochs'],
-        val_check_interval=0.25, # Calculate validation every quarter epoch instead of full since dataset is large, and would like to test this 
-        profiler="advanced",
     )
 
     return trainer, model, module

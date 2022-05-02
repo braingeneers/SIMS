@@ -7,10 +7,16 @@ import zipfile
 import torch.nn.functional as F 
 import io 
 
-import torch.nn.functional as F
 import pytorch_lightning as pl 
 from scipy.sparse import csc_matrix 
+import torch.nn.functional as F
+from torchmetrics.functional import accuracy, precision, recall 
+from pytorch_tabnet.tab_network import TabNet
+
 from pathlib import Path 
+from typing import Callable, Dict
+
+from pytorch_tabnet.tab_network import TabNet
 from pytorch_tabnet.utils import (
     create_explain_matrix,
     ComplexEncoder,
@@ -19,13 +25,73 @@ from pytorch_tabnet.utils import (
 class TabNetLightning(pl.LightningModule):
     def __init__(
         self,
-        *args,
-        **kwargs,
+        input_dim,
+        output_dim,
+        n_d=8,
+        n_a=8,
+        n_steps=3,
+        gamma=1.3,
+        cat_idxs=[],
+        cat_dims=[],
+        cat_emb_dim=1,
+        n_independent=2,
+        n_shared=2,
+        epsilon=1e-15,
+        virtual_batch_size=128,
+        momentum=0.02,
+        mask_type="sparsemax",
+        lambda_sparse = 1e-3,
+        optim_params: Dict[str, float]={
+            'optimizer': torch.optim.Adam,
+            'lr': 0.001,
+            'weight_decay': 0.01,
+        },
+        metrics: Dict[str, Callable]={
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+        },
+        scheduler_params: Dict[str, float]=None,
+        weighted_metrics=False,
+        weights=None,
+        loss=None, # will default to cross_entropy
     ) -> None:
         super().__init__()
 
-        self.__dict__.update(kwargs)
-        self.network = tabnet.tab_network.TabNet(*args, **kwargs)
+        # Stuff needed for training
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.lambda_sparse = lambda_sparse
+
+        self.optim_params = optim_params
+        self.scheduler_params = scheduler_params
+        self.metrics = metrics
+        self.weighted_metrics = weighted_metrics
+        self.weights = weights 
+        self.loss = loss 
+
+        # self.device = ('cuda:0' if torch.cuda.is_available() else 'cpu!')
+
+        print(f'Initializing network')
+        self.network = TabNet(
+            input_dim=input_dim, 
+            output_dim=output_dim, 
+            n_d=n_d,
+            n_a=n_a,
+            n_steps=n_steps,
+            gamma=gamma,
+            cat_idxs=cat_idxs,
+            cat_dims=cat_dims,
+            cat_emb_dim=cat_emb_dim,
+            n_independent=n_independent,
+            n_shared=n_shared,
+            epsilon=epsilon,
+            virtual_batch_size=virtual_batch_size,
+            momentum=momentum,
+            mask_type=mask_type,
+        )
+
+        print(f'Initializing explain matrix')
         self.reducing_matrix = create_explain_matrix(
             self.network.input_dim,
             self.network.cat_emb_dim,
@@ -34,7 +100,7 @@ class TabNetLightning(pl.LightningModule):
         )
 
     def forward(self, x):
-        return self.base_model.forward(x)
+        return self.network(x)
 
     def _compute_loss(self, y, y_hat):
         # If user doesn't specify, just set to cross_entropy
@@ -50,7 +116,7 @@ class TabNetLightning(pl.LightningModule):
         loss = self._compute_loss(y_hat, y)
 
         # Add the overall sparsity loss
-        loss = loss - self.network.lambda_sparse * M_loss
+        loss = loss - self.lambda_sparse * M_loss
         return y, y_hat, loss
 
     def training_step(self, batch, batch_idx):
@@ -74,15 +140,29 @@ class TabNetLightning(pl.LightningModule):
         self._compute_metrics(y_hat, y, 'test')
 
     def configure_optimizers(self):
-        optimizer = self.optim_params.pop('optimizer')
-        optimizer = optimizer(self.parameters(), **self.optim_params)
+        if 'optimizer' in self.optim_params:
+            optimizer = self.optim_params.pop('optimizer')
+            optimizer = optimizer(self.parameters(), **self.optim_params)
+        else:
+            optimizer = torch.optim.Adam(self.parameters(), lr=0.2, weight_decay=1e-5)
 
-        return optimizer
+        if self.scheduler_params is not None:
+            scheduler = self.scheduler_params.pop('scheduler')
+            scheduler = scheduler(optimizer, **self.scheduler_params)
+
+        if self.scheduler_params is None:
+            return optimizer
+        
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': scheduler,
+            'monitor': 'train_loss',
+        }
     
     def _compute_metrics(self, 
         y_hat: torch.Tensor, 
         y: torch.Tensor, 
-        tag: str, 
+        tag: str,
         on_epoch=True, 
         on_step=False,
     ):
@@ -102,7 +182,7 @@ class TabNetLightning(pl.LightningModule):
         """
         for name, metric in self.metrics.items():
             if self.weighted_metrics: # We dont consider class support in calculation
-                val = metric(y_hat, y, average='weighted', num_classes=self.y_hat_dim)
+                val = metric(y_hat, y, average='weighted', num_classes=self.output_dim)
                 self.log(
                     f"weighted_{tag}_{name}", 
                     val, 
@@ -111,7 +191,7 @@ class TabNetLightning(pl.LightningModule):
                     logger=True,
                 )
             else:
-                val = metric(y_hat, y)
+                val = metric(y_hat, y, num_classes=self.output_dim)
                 self.log(
                     f"{tag}_{name}", 
                     val, 
@@ -125,8 +205,11 @@ class TabNetLightning(pl.LightningModule):
         res_explain = []
 
         for batch_nb, data in enumerate(loader):
-            data = data.to(self.device).float()
+            # data = data.to(self.device).float()
 
+            if isinstance(data, tuple): # if we are running this on already labeled pairs and not just for inference
+                data, _ = data 
+                
             M_explain, masks = self.network.forward_masks(data)
             for key, value in masks.items():
                 masks[key] = csc_matrix.dot(

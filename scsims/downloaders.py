@@ -257,6 +257,38 @@ def download_labels(
                 os.path.join('jlehrer', 'expression_data', 'raw', f'{labelfile[:-4]}_labels.tsv')
             )
 
+def upload(file_name, remote_name=None) -> None:
+    """
+    Uploads a file to the braingeneersdev S3 bucket
+    
+    Parameters:
+    file_name: Local file to upload
+    remote_name: Key for S3 bucket. Default is file_name
+    """
+    if remote_name == None:
+        remote_name = file_name
+
+    s3.Bucket('braingeneersdev').upload_file(
+        Filename=file_name,
+        Key=remote_name,
+)
+
+def download(remote_name, file_name=None) -> None:
+    """
+    Downloads a file from the braingeneersdev S3 bucket 
+
+    Parameters:
+    remote_name: S3 key to download. Must be a single file
+    file_name: File name to download to. Default is remote_name
+    """
+    if file_name == None:
+        file_name == remote_name
+
+    s3.Bucket('braingeneersdev').download_file(
+        Key=remote_name,
+        Filename=file_name,
+    )
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(

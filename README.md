@@ -14,13 +14,19 @@ A call to generate and train the SIMS model looks like the following:
 
 ```python 
 
-from src.models.lib.lightning_train import generate_trainer 
+import torch 
+from scsims import generate_trainer
 
 trainer, model, data = generate_trainer(
     datafiles=['cortical_cells.csv', 'cortical_cells_2.csv', 'external/cortical_cells_3.h5ad'], # Notice we can mix and match file types
     labelfiles=['l1.csv', 'l2.csv', 'l3.csv'],
     class_label='cell_state', # Train to predict cell state!
     batch_size=4,
+    optim_params = {
+        'optimizer': torch.optim.Adam,
+        'lr': lr, 
+        'weight_decay': weight_decay,
+    },
 )
 
 trainer.fit(model, datamodule=data)

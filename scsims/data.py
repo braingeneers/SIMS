@@ -1,16 +1,15 @@
 import linecache
-from multiprocessing.sharedctypes import Value 
-from typing import *
-from functools import cached_property, partial
-from itertools import chain 
 import inspect
 import warnings 
 import pathlib
-
 import pandas as pd 
 import torch
 import numpy as np
 import scanpy as sc 
+
+from functools import cached_property, partial
+from itertools import chain 
+from typing import *
 
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from sklearn.model_selection import train_test_split
@@ -18,23 +17,17 @@ from sklearn.utils.class_weight import compute_class_weight
 from scipy.sparse import issparse
 import pytorch_lightning as pl 
 
-import sys, os 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-
 class GeneExpressionData(Dataset):
-    """
-    Defines a PyTorch Dataset for a CSV too large to fit in memory. 
-    """
     def __init__(
         self, 
         filename: str,
         labelname: str,
         class_label: str,
-        indices: Iterable[int]=None,
-        skip=3,
-        cast=True,
-        sep=',',
-        index_col=None,
+        indices: Collection[int]=None,
+        skip: int=3,
+        cast: bool=True,
+        sep: bool=',',
+        index_col: str=None, 
         columns: List[any]=None,
         **kwargs, # To handle extraneous inputs
     ):
@@ -48,7 +41,7 @@ class GeneExpressionData(Dataset):
         we instead just drop the rows in the labelname file. Then the index_col column specifies the actual row numbers of the samples we want. Equivalently, the index_col is the numeric equivalent to 
         the labelname index after dropping the unwanted rows.
 
-        For this reason, index_col must be purely numeric, as the i-th entry of labelfile.loc[:, index_col] contains the actual line number of the i-th sample in the data file. 
+        For this reason, index_col must be purely numeric, as the i-th entry of labelfile.loc[:, index_col] contains the actual line number of the i-th sample in the data file.
 
         :param filename: Path to csv data file, where rows are samples and columns are features
         :type filename: str
@@ -245,15 +238,22 @@ class AnnDatasetMatrix(Dataset):
 
         if issparse(data):
             data = data.todense()
+            data = np.squeeze(np.asarray(data)) # Need to get first row of 1xp matrix, weirdly this is how to do it :shrug:
 
         return (
-            torch.from_numpy(data)[0], 
+            torch.from_numpy(data),
             self.labels[idx]
         )
     
     def __len__(self):
-        return len(self.data)
+        return (
+            self.data.shape[0] if issparse(self.data) else len(self.data)
+        )
 
+    @property 
+    def shape(self):
+        return self.data.shape 
+    
 class CollateLoader(DataLoader):
     def __init__(
         self,
@@ -267,6 +267,7 @@ class CollateLoader(DataLoader):
         *args,
         **kwargs,
     ) -> None:
+
         """
         Initializes a CollateLoader for efficient numerical batch-wise transformations
 
@@ -284,7 +285,10 @@ class CollateLoader(DataLoader):
         """
 
         if refgenes is None and currgenes is not None or refgenes is not None and currgenes is None:
-            raise ValueError("If refgenes is passed, currgenes must be passed too. If currgenes is passed, refgenes must be passed too.")
+            raise ValueError(
+                "If refgenes is passed, currgenes must be passed too."
+                "If currgenes is passed, refgenes must be passed too."
+            )
         
         # Create collate_fn via a partial of the possible collators, depending on if columns intersection is being calculated
         if refgenes is not None:
@@ -293,13 +297,13 @@ class CollateLoader(DataLoader):
                 refgenes=refgenes, 
                 currgenes=currgenes, 
                 transpose=transpose, 
-                normalize=normalize
+                normalize=normalize, 
             )
         else:
             collate_fn = partial(
-                _standard_collate, 
+                _standard_collate,
                 normalize=normalize, 
-                transpose=transpose
+                transpose=transpose,
             )
 
         # This is awkward, but Dataloader init doesn't handle optional keyword arguments
@@ -361,9 +365,16 @@ def _collate_with_refgenes(
     :rtype: Tuple[torch.Tensor, torch.Tensor]
     """
 
-    data = clean_sample(torch.stack([x[0] for x in sample]), refgenes, currgenes)
+    data = clean_sample(
+        sample=torch.stack([x[0] for x in sample]), 
+        refgenes=refgenes, 
+        currgenes=currgenes,
+    )
+
     labels = torch.tensor([x[1] for x in sample])
 
+    # Add Gaussian noise if noise function isn't specificed, otherwise use tht
+    # Assumes compatability with the data tensor 
     return _transform_sample(data, normalize, transpose), labels 
 
 def _standard_collate(
@@ -414,12 +425,10 @@ def _transform_sample(
     return data 
 
 def clean_sample(
-    sample: torch.Tensor, 
-    refgenes: List[str], 
+    sample: torch.Tensor,
+    refgenes: List[str],
     currgenes: List[str],
 ) -> torch.Tensor:
-    # currgenes and refgenes are already sorted
-    # Passed froem calculate_intersection
     """
     Remove uneeded gene columns for given sample.
 
@@ -432,8 +441,9 @@ def clean_sample(
     :return: Sample reordered and intersected with the list of refgenes
     :rtype: torch.Tensor
     """
+    
     intersection = np.intersect1d(currgenes, refgenes, return_indices=True)
-    indices = intersection[1] # List of indices in currgenes that equal refgenes 
+    indices = intersection[1] # List of indices in sorted(currgenes) that equal sorted(refgenes)
     
     axis = (1 if sample.ndim == 2 else 0)
     sample = np.sort(sample, axis=axis)
@@ -450,6 +460,7 @@ def generate_single_dataset(
     sep=',',
     subset=None,
     stratify=True,
+    deterministic=False,
     *args,
     **kwargs,
 ) -> Tuple[Dataset, Dataset, Dataset]:
@@ -470,16 +481,25 @@ def generate_single_dataset(
     suffix = pathlib.Path(datafile).suffix
 
     if suffix == '.h5ad':
-        # WAIT... THIS IS WRONG!!!
-        # I am selectng the index from the train test split, but not from the index_col
         if subset is not None:
-            current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[subset, class_label]
+            current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[subset, :]
+            current_labels = current_labels.loc[:, class_label]
         else:
             current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[:, class_label]
 
         # Make stratified split on labels
-        trainsplit, valsplit = train_test_split(current_labels, stratify=(current_labels if stratify else None), test_size=test_prop)
-        trainsplit, testsplit = train_test_split(trainsplit, stratify=(trainsplit if stratify else None), test_size=test_prop)
+        trainsplit, valsplit = train_test_split(
+            current_labels, 
+            stratify=(current_labels if stratify else None), 
+            test_size=test_prop,
+            random_state=(42 if deterministic else None)
+        )
+        trainsplit, testsplit = train_test_split(
+            trainsplit, 
+            stratify=(trainsplit if stratify else None), 
+            test_size=test_prop,
+            random_state=(42 if deterministic else None)
+        )
 
         data = sc.read_h5ad(datafile)
         train, val, test = (
@@ -502,8 +522,16 @@ def generate_single_dataset(
             current_labels = pd.read_csv(labelfile, sep=sep).loc[:, class_label]
 
         # Make stratified split on labels
-        trainsplit, valsplit = train_test_split(current_labels, stratify=(current_labels if stratify else None), test_size=test_prop)
-        trainsplit, testsplit = train_test_split(trainsplit, stratify=(trainsplit if stratify else None), test_size=test_prop)
+        trainsplit, valsplit = train_test_split(
+            current_labels, 
+            stratify=(current_labels if stratify else None), 
+            test_size=test_prop
+        )
+        trainsplit, testsplit = train_test_split(
+            trainsplit, 
+            stratify=(trainsplit if stratify else None), 
+            test_size=test_prop
+        )
 
         train, val, test = (
             GeneExpressionData(
@@ -512,6 +540,7 @@ def generate_single_dataset(
                 class_label=class_label,
                 indices=indices,
                 index_col=index_col,
+                sep=sep,
                 *args,
                 **kwargs,
             )
@@ -525,12 +554,12 @@ def generate_single_dataloader(
     labelfile: str,
     class_label: str,
     index_col: str,
-    test_prop=0.2,
-    sep=',',
-    subset=None,
-    stratify=True,
-    batch_size=4,
-    num_workers=0,
+    test_prop: float,
+    sep: str,
+    subset: Collection[Any],
+    stratify: bool,
+    batch_size: int,
+    num_workers: int,
     *args,
     **kwargs,
 ) -> Tuple[CollateLoader, CollateLoader, CollateLoader]:
@@ -542,14 +571,14 @@ def generate_single_dataloader(
     """
 
     train, val, test = generate_single_dataset(
-        datafile,
-        labelfile,
-        class_label,
-        index_col,
-        test_prop,
-        sep,
-        subset,
-        stratify,
+        datafile=datafile,
+        labelfile=labelfile,
+        class_label=class_label,
+        index_col=index_col,
+        test_prop=test_prop,
+        sep=sep,
+        subset=subset,
+        stratify=stratify,
         *args,
         **kwargs,
     )
@@ -632,6 +661,113 @@ def generate_datasets(
 
     return train_datasets, val_datasets, test_datasets
 
+def generate_single_test_dataset(
+    datafile: str,
+    labelfile: str,
+    class_label: str,
+    index_col: str,
+    sep: str=',',
+    *args,
+    **kwargs,
+) -> Union[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]:
+    """
+    Generate a single dataset without any splitting, if we want to run prediction at inference time 
+
+    :param datafiles: List of absolute paths to csv files under data_path/ that define cell x expression matrices
+    :type datafiles: List[str]
+    :param labelfiles: ist of absolute paths to csv files under data_path/ that define cell x class matrices
+    :type labelfiles: List[str]
+    :param class_label: Column in label files to train on. Must exist in all datasets, this should throw a natural error if it does not. 
+    :type class_label: str
+    :raises ValueError: Errors if user requests to combine datasets but there is only one. This is probability misinformed and should raise an error.
+    :return: Training, validation and test datasets, respectively
+    :rtype: Tuple[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]
+    """
+
+    suffix = pathlib.Path(datafile).suffix 
+
+    if suffix == '.h5ad':
+        data = sc.read_h5ad(datafile)
+        labels = pd.read_csv(labelfile, index_col=index_col, sep=sep).loc[:, class_label].values 
+        dataset = AnnDatasetMatrix(
+            matrix=data.X,
+            labels=labels,
+            *args,
+            **kwargs,
+        )
+    else:
+        if suffix != '.csv' and suffix != '.tsv':
+            print(f'Extension {suffix} not recognized, interpreting as .csv. To silence this warning, pass in explicit file types.')
+
+        dataset = GeneExpressionData(
+                filename=datafile,
+                labelname=labelfile,
+                class_label=class_label,
+                index_col=index_col,
+                sep=sep,
+                *args,
+                **kwargs,
+            )
+
+    return dataset
+
+def generate_single_test_loader(
+    datafile: str,
+    labelfile: str,
+    class_label: str,
+    index_col: str,
+    sep: str=',',
+    *args,
+    **kwargs,
+):
+    dataset = generate_single_test_dataset(
+        datafile,
+        labelfile,
+        class_label,
+        index_col,
+        sep,
+        *args,
+        **kwargs
+    )
+
+    return CollateLoader(
+        dataset=dataset,
+        *args,
+        **kwargs
+    )
+
+def generate_test_loaders(
+    datafiles: List[str],
+    labelfiles: List[str],
+    class_label: str,
+    index_col: str,
+    sep: str,
+    *args,
+    **kwargs
+) -> CollateLoader:
+    
+    loaders = []
+    for datafile, labelfile in zip(datafiles, labelfiles):
+        dataset = generate_single_test_dataset(
+            datafile,
+            labelfile,
+            class_label,
+            index_col,
+            sep,
+            *args,
+            **kwargs,
+        )
+
+        loaders.append(
+            CollateLoader(
+                dataset=dataset,
+                *args,
+                **kwargs,
+            )
+        )
+
+    return CollateLoader
+
 def generate_dataloaders(
     datafiles: List[str], 
     labelfiles: List[str],
@@ -661,7 +797,6 @@ def generate_dataloaders(
     :return: Either lists containing train, val, test or SequentialLoader's for train, val, test 
     :rtype: Union[Tuple[List[CollateLoader], List[CollateLoader], List[CollateLoader]], Tuple[SequentialLoader, SequentialLoader, SequentialLoader]]
     """
-    
     if len(datafiles) != len(labelfiles):
         raise ValueError("Must have same number of datafiles and labelfiles")
     
@@ -679,7 +814,8 @@ def generate_dataloaders(
             sep=sep,
             subset=subset,
             stratify=stratify,
-
+            batch_size=batch_size,
+            num_workers=num_workers,
             *args,
             **kwargs,
         )
@@ -721,11 +857,13 @@ def compute_class_weights(
             pd.read_csv(file, sep=sep).loc[:, class_label].values
         )
 
-    weights = torch.from_numpy(compute_class_weight(
+    weights = torch.from_numpy(
+        compute_class_weight(
             classes=np.unique(comb),
             y=comb,
             class_weight='balanced',
-        )).float()
+        )
+    ).float()
 
     return (
         weights.to(device) if device is not None else weights

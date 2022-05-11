@@ -1,13 +1,24 @@
-from multiprocessing.sharedctypes import Value
 from typing import *
 
-import torch
+import torch 
+import numpy as np 
+import shutil 
+import json 
+import zipfile 
+import io 
+import pytorch_lightning as pl 
+from scipy.sparse import csc_matrix 
+from pathlib import Path 
+from pytorch_tabnet.utils import (
+    create_explain_matrix,
+    ComplexEncoder,
+)
 import torch.nn.functional as F
-import pytorch_lightning as pl
 from torchmetrics.functional import accuracy, precision, recall 
 from pytorch_tabnet.tab_network import TabNet
-from os.path import join 
-from downloaders import download 
+import copy
+import warnings
+from functools import cached_property
 
 class TabNetLightning(pl.LightningModule):
     def __init__(
@@ -42,6 +53,7 @@ class TabNetLightning(pl.LightningModule):
         weighted_metrics=False,
         weights=None,
         loss=None, # will default to cross_entropy
+        pretrained=None,
     ) -> None:
         super().__init__()
 
@@ -57,6 +69,8 @@ class TabNetLightning(pl.LightningModule):
         self.weights = weights 
         self.loss = loss 
 
+        if pretrained is not None:
+            self._from_pretrained(**pretrained.get_params())
         # self.device = ('cuda:0' if torch.cuda.is_available() else 'cpu!')
 
         print(f'Initializing network')
@@ -112,7 +126,7 @@ class TabNetLightning(pl.LightningModule):
         self.log("train_loss", loss, logger=True, on_epoch=True, on_step=True)
         self._compute_metrics(y_hat, y, 'train')
 
-        return loss 
+        return loss
 
     def validation_step(self, batch, batch_idx):
         y, y_hat, loss = self._step(batch)
@@ -192,8 +206,6 @@ class TabNetLightning(pl.LightningModule):
         res_explain = []
 
         for batch_nb, data in enumerate(loader):
-            # data = data.to(self.device).float()
-
             if isinstance(data, tuple): # if we are running this on already labeled pairs and not just for inference
                 data, _ = data 
                 
@@ -225,6 +237,9 @@ class TabNetLightning(pl.LightningModule):
         sum_explain = M_explain.sum(axis=0)
         feature_importances_ = sum_explain / np.sum(sum_explain)
         return feature_importances_
+
+    def feature_importances(self, dataloader):
+        return self._compute_feature_importances(dataloader)
 
     def save_model(self, path):
         saved_params = {}
@@ -282,3 +297,39 @@ class TabNetLightning(pl.LightningModule):
         self.network.load_state_dict(saved_state_dict)
         self.network.eval()
         self.load_class_attrs(loaded_params["class_attrs"])
+
+    def load_weights_from_unsupervised(self, unsupervised_model):
+        update_state_dict = copy.deepcopy(self.network.state_dict())
+        for param, weights in unsupervised_model.network.state_dict().items():
+            if param.startswith("encoder"):
+                # Convert encoder's layers name to match
+                new_param = "tabnet." + param
+            else:
+                new_param = param
+            if self.network.state_dict().get(new_param) is not None:
+                # update only common layers
+                update_state_dict[new_param] = weights
+
+    def _from_pretrained(self, **kwargs):
+        update_list = [
+            "cat_dims",
+            "cat_emb_dim",
+            "cat_idxs",
+            "input_dim",
+            "mask_type",
+            "n_a",
+            "n_d",
+            "n_independent",
+            "n_shared",
+            "n_steps",
+        ]
+        for var_name, value in kwargs.items():
+            if var_name in update_list:
+                try:
+                    exec(f"global previous_val; previous_val = self.{var_name}")
+                    if previous_val != value:  # noqa
+                        wrn_msg = f"Pretraining: {var_name} changed from {previous_val} to {value}"  # noqa
+                        warnings.warn(wrn_msg)
+                        exec(f"self.{var_name} = value")
+                except AttributeError:
+                    exec(f"self.{var_name} = value")

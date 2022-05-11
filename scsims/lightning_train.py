@@ -15,18 +15,51 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from sklearn.preprocessing import LabelEncoder 
 
-from .neural import GeneClassifier
-from .train import UploadCallback
-from .data import generate_dataloaders
+from .data import generate_dataloaders, compute_class_weights
 
 import sys, os 
 from os.path import join, dirname, abspath 
 sys.path.append(join(dirname(abspath(__file__)), '..', '..'))
 
-from helper import gene_intersection, download
+from helper import gene_intersection, download, upload 
 from data.downloaders.external_download import download_raw_expression_matrices
 
 here = pathlib.Path(__file__).parent.absolute()
+
+class UploadCallback(pl.callbacks.Callback):
+    """Custom PyTorch callback for uploading model checkpoints to the braingeneers S3 bucket.
+    
+    Parameters:
+    path: Local path to folder where model checkpoints are saved
+    desc: Description of checkpoint that is appended to checkpoint file name on save
+    upload_path: Subpath in braingeneersdev/jlehrer/ to upload model checkpoints to
+    """
+    
+    def __init__(
+        self, 
+        path: str, 
+        desc: str, 
+        upload_path='model_checkpoints',
+        epochs: int=20,
+    ) -> None:
+        super().__init__()
+        self.path = path 
+        self.desc = desc
+        self.upload_path = upload_path
+        self.epochs = epochs 
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        epoch = trainer.current_epoch
+
+        if epoch % self.epochs == 0: # Save every ten epochs
+            checkpoint = f'checkpoint-{epoch}-desc-{self.desc}.ckpt'
+            trainer.save_checkpoint(os.path.join(self.path, checkpoint))
+            print(f'Uploading checkpoint at epoch {epoch}')
+            
+            upload(
+                os.path.join(self.path, checkpoint),
+                os.path.join('jlehrer', self.upload_path, checkpoint)
+            )
 
 class DataModule(pl.LightningDataModule):
     def __init__(
@@ -38,7 +71,7 @@ class DataModule(pl.LightningDataModule):
         sep: str=None,
         unzip: bool=True,
         datapath: str=None,
-        is_assumed_numeric: bool=True,
+        assume_numeric_label: bool=True,
         batch_size=4,
         num_workers=0,
         device=('cuda:0' if torch.cuda.is_available() else None),
@@ -72,8 +105,8 @@ class DataModule(pl.LightningDataModule):
         :type sep: str, optional
         :param datapath: Path to local directory to download datafiles and labelfiles to, if using URL. defaults to None
         :type datapath: str, optional
-        :param is_assumed_numeric: If the class_label column in all labelfiles is numeric. Otherwise, we automatically apply sklearn.preprocessing.LabelEncoder to the intersection of all possible labels, defaults to True
-        :type is_assumed_numeric: bool, optional
+        :param assume_numeric_label: If the class_label column in all labelfiles is numeric. Otherwise, we automatically apply sklearn.preprocessing.LabelEncoder to the intersection of all possible labels, defaults to True
+        :type assume_numeric_label: bool, optional
         :raises ValueError: If both a dictionary of URL's is passed and labelfiles/datafiles are passed. We can only handle one, not a mix of both, since there isn't a way to determine easily if a string is an external url or not. 
 
         """    
@@ -90,7 +123,7 @@ class DataModule(pl.LightningDataModule):
         self.datapath = (
             datapath if datapath is not None else join(here, '..', '..', '..', 'data', 'raw')
         )
-        self.is_assumed_numeric = is_assumed_numeric
+        self.assume_numeric_label = assume_numeric_label
         self.batch_size = batch_size
         self.num_workers = num_workers
 
@@ -103,7 +136,7 @@ class DataModule(pl.LightningDataModule):
             self.labelfiles = labelfiles
 
         # Warn user in case tsv/csv ,/\t don't match, this can be annoying to diagnose
-        suffix = pathlib.Path(labelfiles[0]).suffix
+        suffix = pathlib.Path(self.labelfiles[0]).suffix
         if (sep == '\t' and suffix == 'csv') or (sep == ',' and suffix == '.tsv'):
             warnings.warn(f'Passed delimiter {sep = } doesn\'t match file extension, continuing...')
 
@@ -121,7 +154,7 @@ class DataModule(pl.LightningDataModule):
 
         self.args = args 
         self.kwargs = kwargs
-        
+
     def prepare_data(self):
         if self.urls is not None:
             download_raw_expression_matrices(
@@ -131,8 +164,8 @@ class DataModule(pl.LightningDataModule):
                 datapath=self.datapath,
             )
         
-        if not self.is_assumed_numeric:
-            print('is_assumed_numeric=False, using sklearn.preprocessing.LabelEncoder and encoding target variables.')
+        if not self.assume_numeric_label:
+            print('assume_numeric_label=False, using sklearn.preprocessing.LabelEncoder and encoding target variables.')
 
             unique_targets = list(
                 set(np.concatenate([pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles]))
@@ -199,6 +232,10 @@ class DataModule(pl.LightningDataModule):
 
     @cached_property
     def num_features(self):
+        if self.urls is not None and not os.path.isfile(self.datafiles[0]):
+            print('Trying to calcuate num_features before data has been downloaded. Downloading and continuing...')
+            self.prepare_data()
+
         if 'refgenes' in self.kwargs:
             return len(self.kwargs['refgenes'])
         elif hasattr(self, 'trainloader'):
@@ -208,29 +245,99 @@ class DataModule(pl.LightningDataModule):
         else:
             return pd.read_csv(self.datafiles[0], nrows=1, sep=self.sep).shape[1]
 
-            
-class UploadCallback(pl.callbacks.Callback):
-    """Custom PyTorch callback for uploading model checkpoints to the braingeneers S3 bucket.
-    
-    Parameters:
-    path: Local path to folder where model checkpoints are saved
-    desc: Description of checkpoint that is appended to checkpoint file name on save
-    upload_path: Subpath in braingeneersdev/jlehrer/ to upload model checkpoints to
+def generate_trainer(
+    datafiles: List[str],
+    labelfiles: List[str],
+    class_label: str,
+    batch_size: int,
+    num_workers: int,
+    optim_params: Dict[str, Any]={
+        'optimizer': torch.optim.Adam,
+        'lr': 0.02,
+    },
+    weighted_metrics: bool=None,
+    scheduler_params: Dict[str, float]=None,
+    wandb_name: str=None,
+    weights: torch.Tensor=None,
+    max_epochs=500,
+    *args,
+    **kwargs,
+):
     """
-    
-    def __init__(self, path, desc, upload_path='model_checkpoints') -> None:
-        super().__init__()
-        self.path = path 
-        self.desc = desc
-        self.upload_path = upload_path
+    Generates PyTorch Lightning trainer and datasets for model training.
 
-    def on_train_epoch_end(self, trainer, pl_module):
-        epoch = trainer.current_epoch
-        if epoch % 10 == 0: # Save every ten epochs
-            checkpoint = f'checkpoint-{epoch}-desc-{self.desc}.ckpt'
-            trainer.save_checkpoint(join(self.path, checkpoint))
-            print(f'Uploading checkpoint at epoch {epoch}')
-            upload(
-                join(self.path, checkpoint),
-                join('jlehrer', self.upload_path, checkpoint)
-            )
+    :param datafiles: List of absolute paths to datafiles
+    :type datafiles: List[str]
+    :param labelfiles: List of absolute paths to labelfiles
+    :type labelfiles: List[str]
+    :param class_label: Class label to train on 
+    :type class_label: str
+    :param weighted_metrics: To use weighted metrics in model training 
+    :type weighted_metrics: bool
+    :param batch_size: Batch size in dataloader
+    :type batch_size: int
+    :param num_workers: Number of workers in dataloader
+    :type num_workers: int
+    :param optim_params: Dictionary defining optimizer and any needed/optional arguments for optimizer initializatiom
+    :type optim_params: Dict[str, Any]
+    :param wandb_name: Name of run in Wandb.ai, defaults to ''
+    :type wandb_name: str, optional
+    :return: Trainer, model, datamodule 
+    :rtype: Trainer, model, datamodule 
+    """
+
+    device = ('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f'Device is {device}')
+    
+    here = pathlib.Path(__file__).parent.absolute()
+    data_path = os.path.join(here, '..', '..', '..', 'data')
+
+    wandb_logger = WandbLogger(
+        project=f"tabnet-classifer-sweep",
+        name=wandb_name
+    )
+
+    uploadcallback = UploadCallback(
+        path=os.path.join(here, 'checkpoints'),
+        desc=wandb_name
+    )
+
+    early_stop_callback = EarlyStopping(
+        monitor=("weighted_val_accuracy" if weighted_metrics else "val_accuarcy"), 
+        min_delta=0.00, 
+        patience=3, 
+        verbose=False, 
+        mode="max"
+    )
+
+    module = DataModule(
+        datafiles=datafiles, 
+        labelfiles=labelfiles, 
+        class_label=class_label, 
+        batch_size=batch_size,
+        num_workers=num_workers,
+    )
+
+    model = TabNetLightning(
+        input_dim=module.num_features,
+        output_dim=module.num_labels,
+        weighted_metrics=weighted_metrics,
+        optim_params=optim_params,
+        scheduler_params=scheduler_params,
+        weights=weights,
+    )
+    
+    trainer = pl.Trainer(
+        gpus=(1 if torch.cuda.is_available() else 0),
+        auto_lr_find=False,
+        # gradient_clip_val=0.5,
+        logger=wandb_logger,
+        max_epochs=max_epochs,
+        # callbacks=[
+        #     uploadcallback, 
+        # ],
+        # val_check_interval=0.25, # Calculate validation every quarter epoch instead of full since dataset is large, and would like to test this 
+    )
+
+    return trainer, model, module
+

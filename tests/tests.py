@@ -3,10 +3,11 @@ import os
 import sys
 import pandas as pd
 import numpy as np
+import torch
 from torch.utils.data import *
 from tqdm import tqdm
-import linecache 
 from pytorch_tabnet.tab_model import TabNetClassifier
+
 sys.path.append('../src/')
 sys.path.append('..')
 
@@ -41,8 +42,14 @@ def map_cols_test():
     
     assert torch.equal(res, desired)
     
-def _test_first_n_samples(n, datafile, labelfile):
-    data = GeneExpressionData(datafile, labelfile, 'Type', skip=3)
+def _test_first_n_samples(n, datafile, labelfile, class_label='Type', index_col='cell'):
+    data = GeneExpressionData(
+        datafile, 
+        labelfile, 
+        class_label, 
+        skip=3,
+        index_col=index_col,
+    )
     cols = data.columns
     
     # Generate dict with half precision values to read this into my 16gb memory
@@ -54,14 +61,51 @@ def _test_first_n_samples(n, datafile, labelfile):
     similar = []
     for i in range(n):
         datasample = data[i][0]
-        dfsample = torch.from_numpy(data_df.loc[label_df.loc[i, 'cell'], :].values).float()
-        
+
+        dfsample = torch.from_numpy(data_df.loc[label_df.loc[i, index_col], :].values).float()
         isclose = all(torch.isclose(datasample, dfsample))
         similar.append(isclose)
     
     print(f"First {n=} columns of expression matrix is equal to GeneExpressionData: {all(p for p in similar)}")
 
     assert (all(p for p in similar))
+
+def test_split(n, datafile, labelfile, class_label='Type', index_col='cell'):
+    from sklearn.model_selection import train_test_split 
+    # 2*n is usually enough to capture differences in index_col
+
+    label_df = pd.read_csv(labelfile, nrows=2*n)
+    data_df = pd.read_csv(datafile, nrows=2*n, dtype=np.float32, header=1)
+    
+    labels = label_df.loc[:, class_label]
+    
+    train, _ = train_test_split(labels, random_state=42)
+    train = train.index 
+    
+    train_labeldf = label_df.loc[train, :].reset_index(drop=True)
+
+    train = GeneExpressionData(
+            datafile,
+            labelfile,
+            index_col=index_col,
+            class_label=class_label,
+            indices=train,
+        )
+    
+    train_similar = []
+    for i in range(n):
+        trainsample = train[i][0]
+        df_idx = train_labeldf.loc[i, index_col]
+        
+        trainsample_fromdf = torch.from_numpy(
+            data_df.loc[df_idx, :].values
+        )
+        
+        train_similar.append(
+            all(torch.isclose(trainsample, trainsample_fromdf))
+        )
+        
+    assert all(p for p in train_similar) # all train are similar 
 
 def test_datamodule():
     N = 50
@@ -73,7 +117,15 @@ def test_datamodule():
         print(f'Testing {datafile=}')
         _test_first_n_samples(N, datafile, labelfile)
 
+def test_retina_data():
+    N = 50 
+    datafile = os.path.join('..', 'data', 'retina', 'retina_T.csv')
+    labelfile = os.path.join('..', 'data', 'retina', 'retina_labels_numeric.csv')
+
+    _test_first_n_samples(N, datafile, labelfile, 'class_label', 'cell')
+    test_split(N, datafile, labelfile, 'class_label', 'cell')
+
 if __name__ == "__main__":
     map_cols_test()
     test_datamodule()
-
+    test_retina_data()

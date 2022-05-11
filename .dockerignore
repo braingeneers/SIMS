@@ -8,3 +8,17 @@ src/visualization/*.png
 .git/*
 .git*
 __pycache__/*/*
+scripts/*
+tabnet*
+retina_T*
+retina_labels*
+xgboost/*
+tests/*
+checkpoints/*
+.wandb/*
+*.log
+*.ckpt
+**/checkpoints/*
+**/.wandb/*
+wandb/*
+**/wandb/*

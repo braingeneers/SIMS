@@ -1,4 +1,3 @@
-import sys
 import os
 import pathlib 
 from typing import *
@@ -15,14 +14,12 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from sklearn.preprocessing import LabelEncoder 
 
-from .data import generate_dataloaders, compute_class_weights
+from data import generate_dataloaders, compute_class_weights
 
 import sys, os 
-from os.path import join, dirname, abspath 
-sys.path.append(join(dirname(abspath(__file__)), '..', '..'))
+from os.path import join
 
-from helper import gene_intersection, download, upload 
-from data.downloaders.external_download import download_raw_expression_matrices
+from networking import upload, download_raw_expression_matrices
 
 here = pathlib.Path(__file__).parent.absolute()
 

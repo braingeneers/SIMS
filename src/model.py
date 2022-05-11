@@ -18,7 +18,6 @@ from torchmetrics.functional import accuracy, precision, recall
 from pytorch_tabnet.tab_network import TabNet
 import copy
 import warnings
-from functools import cached_property
 
 class TabNetLightning(pl.LightningModule):
     def __init__(

@@ -30,6 +30,7 @@ RUN conda install --yes boto3 tenacity pandas numpy pip plotly scipy && \
     pip install pytorch-tabnet \
     pip install bigcsv==0.0.6 \ 
     pip install scanpy \ 
-    pip install anndata 
+    pip install anndata \
+    pip install xgboost 
 
 COPY . .

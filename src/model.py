@@ -40,16 +40,8 @@ class TabNetLightning(pl.LightningModule):
         momentum=0.02,
         mask_type="sparsemax",
         lambda_sparse = 1e-3,
-        optim_params: Dict[str, float]={
-            'optimizer': torch.optim.Adam,
-            'lr': 0.001,
-            'weight_decay': 0.01,
-        },
-        metrics: Dict[str, Callable]={
-            'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-        },
+        optim_params: Dict[str, float]=None,
+        metrics: Dict[str, Callable]=None,
         scheduler_params: Dict[str, float]=None,
         weights: torch.Tensor=None,
         loss: Callable=None, # will default to cross_entropy
@@ -75,6 +67,15 @@ class TabNetLightning(pl.LightningModule):
             self.metrics = aggregate_metrics(num_classes=self.output_dim)
         else:
             self.metrics = metrics 
+
+        if optim_params is None:
+            self.optim_params = {
+                'optimizer': torch.optim.Adam,
+                'lr': 0.001,
+                'weight_decay': 0.01,
+            }
+        else:
+            self.optim_params = optim_params
 
         print(f'Initializing network')
         self.network = TabNet(
@@ -113,6 +114,23 @@ class TabNetLightning(pl.LightningModule):
             self.loss = F.cross_entropy 
 
         return self.loss(y, y_hat, weight=self.weights)
+        
+    def _compute_metrics(self, 
+        y_hat: torch.Tensor, 
+        y: torch.Tensor, 
+        tag: str,
+        on_epoch=True, 
+        on_step=False,
+    ):
+        for name, metric in self.metrics.items():
+            val = metric(y_hat, y)
+            self.log(
+                f"{tag}_{name}", 
+                val, 
+                on_epoch=on_epoch, 
+                on_step=on_step,
+                logger=True,
+            )
 
     def _step(self, batch):
         x, y = batch
@@ -132,6 +150,8 @@ class TabNetLightning(pl.LightningModule):
         loss = self._compute_loss(y_hat, y)
         # Add the overall sparsity loss
         loss = loss - self.lambda_sparse * M_loss
+
+        self.log(f"{tag}_loss", loss, logger=True, on_epoch=True, on_step=True)
         self._compute_metrics(y_hat, y, tag)
         
         tp, fp, _, fn = _stat_scores_update(
@@ -213,25 +233,6 @@ class TabNetLightning(pl.LightningModule):
             'monitor': 'train_loss',
         }
     
-    def _compute_metrics(self, 
-        y_hat: torch.Tensor, 
-        y: torch.Tensor, 
-        tag: str,
-        on_epoch=True, 
-        on_step=False,
-    ):
-        metrics = {}
-        for name, metric in self.metrics.items():
-            val = metric(y_hat, y)
-            metrics[name] = val
-
-            self.log(
-                f"{tag}_{name}", 
-                val, 
-                on_epoch=on_epoch, 
-                on_step=on_step,
-                logger=True,
-            )
 
     def explain(self, loader, normalize=False):
         self.network.eval()

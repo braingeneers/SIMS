@@ -242,6 +242,14 @@ class DataModule(pl.LightningDataModule):
         else:
             return pd.read_csv(self.datafiles[0], nrows=1, sep=self.sep).shape[1]
 
+    @cached_property
+    def input_dim(self):
+        return self.num_features
+
+    @cached_property
+    def output_dim(self):
+        return self.num_labels
+
 def generate_trainer(
     datafiles: List[str],
     labelfiles: List[str],

@@ -62,7 +62,7 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
         # Accuracies
         'total_accuracy': torchmetrics.functional.accuracy,
         'balanced_accuracy': partial(balanced_accuracy, num_classes=num_classes),
-        'weighted_accuracy': weighted_accuracy,
+        'weighted_accuracy': partial(weighted_accuracy, num_classes=num_classes),
         
         # Precision, recall and f1s
         'precision': torchmetrics.functional.precision,
@@ -70,9 +70,9 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
         'f1': torchmetrics.functional.f1_score,
         
         # Per class 
-        'per_class_f1': per_class_f1,
-        'per_class_precision': per_class_precision,
-        'per_class_recall': per_class_recall,
+        'per_class_f1': partial(per_class_f1, num_classes=num_classes),
+        'per_class_precision': partial(per_class_precision, num_classes=num_classes),
+        'per_class_recall': partial(per_class_recall, num_classes=num_classes),
     }
     
     return metrics 

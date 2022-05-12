@@ -137,8 +137,17 @@ if __name__ == "__main__":
         trainer.fit(model, datamodule=module)
         trainer.test(model, datamodule=module)
     else:  
+        checkpoint_path = join(here, '..', 'checkpoints/checkpoint-80-desc-retina.ckpt')
+
+        if not os.path.isfile(checkpoint_path):
+            os.makedirs(join(here, '..', 'checkpoints'), exist_ok=True)
+            download(
+                'jlehrer/model_checkpoints/checkpoint-80-desc-retina.ckpt',
+                checkpoint_path
+            )
+
         model = TabNetLightning.load_from_checkpoint(
-            join(here, '..', 'checkpoints/checkpoint-80-desc-retina.ckpt'),
+            checkpoint_path,
             input_dim=module.input_dim,
             output_dim=module.output_dim,
             n_d=32,

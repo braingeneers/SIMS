@@ -68,29 +68,28 @@ if __name__ == "__main__":
                 file_name=join(data_path, file),
             )
 
-    # Calculate gene intersection
-    mouse_atlas = an.read_h5ad(join(data_path, 'MouseAdultInhibitoryNeurons.h5ad'))
-    mo_data = an.read_h5ad(join(data_path, 'Mo_PV_paper_TDTomato_mouseonly.h5ad'))
+    # # Calculate gene intersection
+    # mouse_atlas = an.read_h5ad(join(data_path, 'MouseAdultInhibitoryNeurons.h5ad'))
+    # mo_data = an.read_h5ad(join(data_path, 'Mo_PV_paper_TDTomato_mouseonly.h5ad'))
 
-    g1 = mo_data.var.index.values
-    g2 = mouse_atlas.var.index.values
+    # g1 = mo_data.var.index.values
+    # g2 = mouse_atlas.var.index.values
 
-    g1 = [x.strip().upper() for x in g1]
-    g2 = [x.strip().upper() for x in g2]
+    # g1 = [x.strip().upper() for x in g1]
+    # g2 = [x.strip().upper() for x in g2]
 
-    refgenes = sorted(list(set(g1).intersection(g2)))
+    # refgenes = sorted(list(set(g1).intersection(g2)))
 
-    # Define labelfiles and trainer 
+    # # Define labelfiles and trainer 
     datafiles=[join(data_path, 'MouseAdultInhibitoryNeurons.h5ad')]
     labelfiles=[join(data_path, 'MouseAdultInhibitoryNeurons_labels.csv')]
 
     device = ('cuda:0' if torch.cuda.is_available() else None)
-
     module = DataModule(
         datafiles=datafiles,
         labelfiles=labelfiles,
         class_label='numeric_class',
-        batch_size=4,
+        batch_size=64,
         num_workers=0,
         shuffle=True,
         drop_last=True,
@@ -156,13 +155,20 @@ if __name__ == "__main__":
         trainer.fit(model, datamodule=module)
         trainer.test(model, datamodule=module)
     else:
+        checkpoint_path = join(here, '..', 'checkpoints', 'checkpoint-280-desc-mouse.ckpt')
+
+        if not os.path.isfile(checkpoint_path):
+            os.makedirs(join(here, '../checkpoints'), exist_ok=True)
+            print('Downloading file')
+            download(
+                'jlehrer/model_checkpoints/checkpoint-280-desc-mouse.ckpt',
+                checkpoint_path,
+            )
+
         model = TabNetLightning.load_from_checkpoint(
-            join(here, '..', 'checkpoints', 'checkpoint-280-desc-mouse.ckpt'),
+            checkpoint_path,
             input_dim=module.input_dim,
             output_dim=module.output_dim,
-            # n_d=32, 
-            # n_a=32,
-            # n_steps=10,
         )
 
         trainer.test(model, datamodule=module)

@@ -27,10 +27,9 @@ import anndata as an
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 
-from models.lib.data import *
-from models.lib.lightning_train import *
-from models.lib.neural import *
-from data.downloaders.external_download import *
+from data import *
+from lightning_train import *
+from model import *
 from torchmetrics.functional import *
 from networking import download 
 
@@ -93,6 +92,7 @@ if __name__ == "__main__":
         batch_size=16,
         num_workers=0,
         deterministic=True,
+        normalize=True,
     )
 
     wandb_logger = WandbLogger(
@@ -143,8 +143,18 @@ if __name__ == "__main__":
         trainer.fit(model, datamodule=module)
         trainer.test(model, datamodule=module)
     else:
+        checkpoint_path = join(here, '..', 'checkpoints/checkpoint-80-desc-dental.ckpt')
+        if not os.path.isfile(checkpoint_path):
+            os.makedirs(join(here, '..', 'checkpoints'), exist_ok=True)
+            download(
+                remote_name='jlehrer/model_checkpoints/checkpoint-80-desc-dental.ckpt',
+                file_name=checkpoint_path
+            )
+
         model = TabNetLightning.load_from_checkpoint(
             join(here, '..', 'checkpoints/checkpoint-80-desc-dental.ckpt'),
             input_dim=module.input_dim,
             output_dim=module.output_dim
         )
+
+        trainer.test(model, datamodule=module)

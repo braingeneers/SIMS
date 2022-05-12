@@ -73,6 +73,11 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
         'per_class_f1': partial(per_class_f1, num_classes=num_classes),
         'per_class_precision': partial(per_class_precision, num_classes=num_classes),
         'per_class_recall': partial(per_class_recall, num_classes=num_classes),
+        
+        # Random stuff I might want
+        'specificity': partial(torchmetrics.functional.specificity, num_classes=num_classes),
+        'confusion_matrix': partial(torchmetrics.functional.confusion_matrix, num_classes=num_classes),
+        'auroc': partial(torchmetrics.functional.auroc, num_classes=num_classes)
     }
     
     return metrics 

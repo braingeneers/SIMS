@@ -14,11 +14,11 @@ from pytorch_tabnet.utils import (
     ComplexEncoder,
 )
 import torch.nn.functional as F
-from torchmetrics.functional import accuracy, precision, recall 
 from pytorch_tabnet.tab_network import TabNet
 import copy
 import warnings
 from torchmetrics.functional.classification.stat_scores import _stat_scores_update
+
 from metrics import aggregate_metrics
 
 class TabNetLightning(pl.LightningModule):
@@ -56,7 +56,7 @@ class TabNetLightning(pl.LightningModule):
         self.lambda_sparse = lambda_sparse
 
         self.optim_params = optim_params
-        self.scheduler_params = scheduler_params
+        
         self.weights = weights 
         self.loss = loss 
 
@@ -76,6 +76,14 @@ class TabNetLightning(pl.LightningModule):
             }
         else:
             self.optim_params = optim_params
+
+        if scheduler_params is None:
+            self.scheduler_params={
+                'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
+                'factor': 0.001,
+            },
+        else:
+            self.scheduler_params = scheduler_params
 
         print(f'Initializing network')
         self.network = TabNet(
@@ -114,7 +122,7 @@ class TabNetLightning(pl.LightningModule):
             self.loss = F.cross_entropy 
 
         return self.loss(y, y_hat, weight=self.weights)
-        
+
     def _compute_metrics(self, 
         y_hat: torch.Tensor, 
         y: torch.Tensor, 
@@ -178,16 +186,16 @@ class TabNetLightning(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         return self._step(batch, 'test')
     
-    def _epoch_end(self, step_outputs):
+    def _epoch_end(self, step_outputs, tag):
         tps, fps, fns = [], [], []
         
         for i in range(len(step_outputs)):
             res = step_outputs[i]
             tp, fp, fn = res['tp'], res['fp'], res['fn']
                 
-            tps.append(tp.numpy())
-            fps.append(fp.numpy())
-            fns.append(fn.numpy())
+            tps.append(tp.cpu().numpy())
+            fps.append(fp.cpu().numpy())
+            fns.append(fn.cpu().numpy())
             
         tp = np.sum(np.array(tps), axis=0)
         fp = np.sum(np.array(fps), axis=0)
@@ -197,22 +205,23 @@ class TabNetLightning(pl.LightningModule):
         recall = tp / (tp + fn)
         f1s = 2*(precision * recall) / (precision + recall)
         f1s = np.nan_to_num(f1s)
+
+        self.log(f"{tag}_median_f1", np.nanmedian(f1s), logger=True, on_step=False, on_epoch=True)
         print(f"Median f1 score is {np.nanmedian(f1s)} for epoch={self.current_epoch}")
 
         return f1s 
 
     # Calculation on epoch end, for "median F1 score"
     def training_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs)
+        pass 
         
     def validation_epoch_end(self, step_outputs):
-        f1s = self._epoch_end(step_outputs) 
-        print(f"Validation F1-scores are {f1s}")
+        f1s = self._epoch_end(step_outputs, 'val') 
     
     def test_epoch_end(self, step_outputs):
-        f1s = self._epoch_end(step_outputs) 
-        print(f"Test F1 scores are {f1s}")
-
+        f1s = self._epoch_end(step_outputs, 'test') 
+        print(f'Test f1 is {f1s}')
+        
     def configure_optimizers(self):
         if 'optimizer' in self.optim_params:
             optimizer = self.optim_params.pop('optimizer')
@@ -232,7 +241,6 @@ class TabNetLightning(pl.LightningModule):
             'lr_scheduler': scheduler,
             'monitor': 'train_loss',
         }
-    
 
     def explain(self, loader, normalize=False):
         self.network.eval()

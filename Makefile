@@ -1,5 +1,6 @@
 CONTAINER = jmlehrer/sims
 
+.PHONY: build exec push run go train release 
 exec:
 	docker exec -it $(CONTAINER) /bin/bash
 

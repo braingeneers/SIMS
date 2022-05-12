@@ -14,8 +14,54 @@ random.seed(42)
 from os.path import join, dirname, abspath 
 sys.path.append(join(dirname(abspath(__file__)), '..', 'src'))
 
-from models.lib.data import *
-from helper import *
+from data import *
+from network import *
+
+def generate_synthetic_h5ad():
+    df = pd.DataFrame(index=range(25), columns=[f'col_{i}' for i in range(10)])
+
+    # Such that row_i = (i, ... ,i)
+    for i in range(25): 
+        df.loc[i, :] = [i]*10
+    
+    # Convert this to an anndata object 
+    cols = df.columns 
+
+    df = an.AnnData(df.values)
+    df.var.index = cols
+
+    # Define label dataframe
+    labels = pd.DataFrame(
+        index=range(25), 
+        columns=['index_col', 'label']
+    )   
+
+    # Create fake index_col = label col such that index_col_i = label_col_i = row_i = (i,...,i)
+    labels = pd.DataFrame(index=range(25), columns=['index_col', 'label'])
+    labels['index_col'] = [int(x) for x in random.sample(list(df.obs.index), k=len(df))]
+    labels['label'] = labels['index_col']
+
+    return df, labels 
+
+def generate_synethic_csv():
+        # Create a test dataframe 
+    df = pd.DataFrame(index=range(25), columns=[f'col_{i}' for i in range(10)])
+
+    # Such that row_i = (i, ... ,i)
+    for i in range(25): 
+        df.loc[i, :] = [i]*10
+
+    # Define label dataframe
+    labels = pd.DataFrame(
+        index=range(25), 
+        columns=['index_col', 'label']
+    )
+
+    # Create fake index_col = label col such that index_col_i = label_col_i = row_i = (i,...,i)
+    labels['index_col'] = [int(x) for x in random.sample(list(df.index), k=len(df))]
+    labels['label'] = labels['index_col']
+
+    return df, labels 
 
 class TestData(unittest.TestCase):
     @classmethod
@@ -33,22 +79,7 @@ class TestData(unittest.TestCase):
         cls.labelfile = os.path.join(cls.datapath, 'test_labels.csv')
     
     def test_dataset_from_csv(self):
-        # Create a test dataframe 
-        df = pd.DataFrame(index=range(25), columns=[f'col_{i}' for i in range(10)])
-
-        # Such that row_i = (i, ... ,i)
-        for i in range(25): 
-            df.loc[i, :] = [i]*10
-
-        # Define label dataframe
-        labels = pd.DataFrame(
-            index=range(25), 
-            columns=['index_col', 'label']
-        )
-
-        # Create fake index_col = label col such that index_col_i = label_col_i = row_i = (i,...,i)
-        labels['index_col'] = [int(x) for x in random.sample(list(df.index), k=len(df))]
-        labels['label'] = labels['index_col']
+        df, labels = generate_synethic_csv()
 
         labels.to_csv(self.labelfile, index=False)
         df.to_csv(self.datafile_csv)
@@ -80,29 +111,8 @@ class TestData(unittest.TestCase):
             
     def test_dataset_from_h5ad(self):
         # Create a test dataframe 
-        df = pd.DataFrame(index=range(25), columns=[f'col_{i}' for i in range(10)])
-
-        # Such that row_i = (i, ... ,i)
-        for i in range(25): 
-            df.loc[i, :] = [i]*10
+        df, labels = generate_synthetic_h5ad()
         
-        # Convert this to an anndata object 
-        cols = df.columns 
-
-        df = an.AnnData(df.values)
-        df.var.index = cols
-
-        # Define label dataframe
-        labels = pd.DataFrame(
-            index=range(25), 
-            columns=['index_col', 'label']
-        )   
-
-        # Create fake index_col = label col such that index_col_i = label_col_i = row_i = (i,...,i)
-        labels = pd.DataFrame(index=range(25), columns=['index_col', 'label'])
-        labels['index_col'] = [int(x) for x in random.sample(list(df.obs.index), k=len(df))]
-        labels['label'] = labels['index_col']
-
         labels.to_csv(self.labelfile, index=False)
         df.write_h5ad(self.datafile_h5ad)
 

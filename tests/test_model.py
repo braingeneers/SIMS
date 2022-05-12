@@ -15,12 +15,11 @@ from torch.utils.data import *
 
 random.seed(42)
 from os.path import join, dirname, abspath 
-sys.path.append(join(dirname(abspath(__file__)), '..', 'src'))
+sys.path.append(join(dirname(abspath(__file__)), '..', 'src')) # hacky, to fix pathing 
 
-from models.lib.data import *
-from models.lib.lightning_train import *
-from models.lib.neural import *
-from helper import *
+from data import *
+from lightning_train import *
+from model import *
 
 class TestModel(unittest.TestCase):
     @classmethod

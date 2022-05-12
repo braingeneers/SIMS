@@ -18,6 +18,8 @@ from torchmetrics.functional import accuracy, precision, recall
 from pytorch_tabnet.tab_network import TabNet
 import copy
 import warnings
+from torchmetrics.functional.classification.stat_scores import _stat_scores_update
+from metrics import aggregate_metrics
 
 class TabNetLightning(pl.LightningModule):
     def __init__(
@@ -49,10 +51,10 @@ class TabNetLightning(pl.LightningModule):
             'recall': recall,
         },
         scheduler_params: Dict[str, float]=None,
-        weighted_metrics=False,
-        weights=None,
-        loss=None, # will default to cross_entropy
-        pretrained=None,
+        weights: torch.Tensor=None,
+        loss: Callable=None, # will default to cross_entropy
+        pretrained: bool=None,
+        no_explain: bool=False,
     ) -> None:
         super().__init__()
 
@@ -63,14 +65,16 @@ class TabNetLightning(pl.LightningModule):
 
         self.optim_params = optim_params
         self.scheduler_params = scheduler_params
-        self.metrics = metrics
-        self.weighted_metrics = weighted_metrics
         self.weights = weights 
         self.loss = loss 
 
         if pretrained is not None:
             self._from_pretrained(**pretrained.get_params())
-        # self.device = ('cuda:0' if torch.cuda.is_available() else 'cpu!')
+
+        if metrics is None:
+            self.metrics = aggregate_metrics(num_classes=self.output_dim)
+        else:
+            self.metrics = metrics 
 
         print(f'Initializing network')
         self.network = TabNet(
@@ -92,12 +96,13 @@ class TabNetLightning(pl.LightningModule):
         )
 
         print(f'Initializing explain matrix')
-        self.reducing_matrix = create_explain_matrix(
-            self.network.input_dim,
-            self.network.cat_emb_dim,
-            self.network.cat_idxs,
-            self.network.post_embed_dim,
-        )
+        if not no_explain:
+            self.reducing_matrix = create_explain_matrix(
+                self.network.input_dim,
+                self.network.cat_emb_dim,
+                self.network.cat_idxs,
+                self.network.post_embed_dim,
+            )
 
     def forward(self, x):
         return self.network(x)
@@ -119,25 +124,74 @@ class TabNetLightning(pl.LightningModule):
         loss = loss - self.lambda_sparse * M_loss
         return y, y_hat, loss
 
+
+    def _step(self, batch, tag):
+        x, y = batch
+        y_hat, M_loss = self.network(x)
+
+        loss = self._compute_loss(y_hat, y)
+        # Add the overall sparsity loss
+        loss = loss - self.lambda_sparse * M_loss
+        self._compute_metrics(y_hat, y, tag)
+        
+        tp, fp, _, fn = _stat_scores_update(
+            preds=y_hat,
+            target=y,
+            num_classes=self.output_dim,
+            reduce="macro",
+        )
+
+        return {
+            "loss": loss,
+            "tp": tp,
+            "fp": fp,
+            "fn": fn,
+        }
+
+    # Calculations on step
     def training_step(self, batch, batch_idx):
-        y, y_hat, loss = self._step(batch)
-
-        self.log("train_loss", loss, logger=True, on_epoch=True, on_step=True)
-        self._compute_metrics(y_hat, y, 'train')
-
-        return loss
+        return self._step(batch, 'train')
 
     def validation_step(self, batch, batch_idx):
-        y, y_hat, loss = self._step(batch)
-
-        self.log("val_loss", loss, logger=True, on_epoch=True, on_step=True)
-        self._compute_metrics(y_hat, y, 'val')
+        return self._step(batch, 'val')
 
     def test_step(self, batch, batch_idx):
-        y, y_hat, loss = self._step(batch)
+        return self._step(batch, 'test')
+    
+    def _epoch_end(self, step_outputs):
+        tps, fps, fns = [], [], []
+        
+        for i in range(len(step_outputs)):
+            res = step_outputs[i]
+            tp, fp, fn = res['tp'], res['fp'], res['fn']
+                
+            tps.append(tp.numpy())
+            fps.append(fp.numpy())
+            fns.append(fn.numpy())
+            
+        tp = np.sum(np.array(tps), axis=0)
+        fp = np.sum(np.array(fps), axis=0)
+        fn = np.sum(np.array(fns), axis=0)
+        
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+        f1s = 2*(precision * recall) / (precision + recall)
+        f1s = np.nan_to_num(f1s)
+        print(f"Median f1 score is {np.nanmedian(f1s)} for epoch={self.current_epoch}")
 
-        self.log("test_loss", loss, logger=True, on_epoch=True, on_step=True)
-        self._compute_metrics(y_hat, y, 'test')
+        return f1s 
+
+    # Calculation on epoch end, for "median F1 score"
+    def training_epoch_end(self, step_outputs):
+        self._epoch_end(step_outputs)
+        
+    def validation_epoch_end(self, step_outputs):
+        f1s = self._epoch_end(step_outputs) 
+        print(f"Validation F1-scores are {f1s}")
+    
+    def test_epoch_end(self, step_outputs):
+        f1s = self._epoch_end(step_outputs) 
+        print(f"Test F1 scores are {f1s}")
 
     def configure_optimizers(self):
         if 'optimizer' in self.optim_params:
@@ -166,39 +220,18 @@ class TabNetLightning(pl.LightningModule):
         on_epoch=True, 
         on_step=False,
     ):
-        """
-        Compute metrics for the given batch
-
-        :param y_hat: logits of model
-        :type y_hat: torch.Tensor
-        :param y: tensor of labels
-        :type y: torch.Tensor
-        :param tag: log name, to specify train/val/test batch calculation
-        :type tag: str
-        :param on_epoch: log on epoch, defaults to True
-        :type on_epoch: bool, optional
-        :param on_step: log on step, defaults to True
-        :type on_step: bool, optional
-        """
+        metrics = {}
         for name, metric in self.metrics.items():
-            if self.weighted_metrics: # We dont consider class support in calculation
-                val = metric(y_hat, y, average='weighted', num_classes=self.output_dim)
-                self.log(
-                    f"weighted_{tag}_{name}", 
-                    val, 
-                    on_epoch=on_epoch, 
-                    on_step=on_step,
-                    logger=True,
-                )
-            else:
-                val = metric(y_hat, y, num_classes=self.output_dim)
-                self.log(
-                    f"{tag}_{name}", 
-                    val, 
-                    on_epoch=on_epoch, 
-                    on_step=on_step,
-                    logger=True,
-                )
+            val = metric(y_hat, y)
+            metrics[name] = val
+
+            self.log(
+                f"{tag}_{name}", 
+                val, 
+                on_epoch=on_epoch, 
+                on_step=on_step,
+                logger=True,
+            )
 
     def explain(self, loader, normalize=False):
         self.network.eval()

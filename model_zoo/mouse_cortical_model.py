@@ -68,35 +68,36 @@ if __name__ == "__main__":
     lr, weight_decay, name, test = args.lr, args.weight_decay, args.name, args.test 
 
     here = pathlib.Path(__file__).parent.resolve()
-    data_path = join(here, '..', 'data', 'dental')
+    data_path = join(here, '..', 'data', 'benchmark')
 
     print('Making data folder')
     os.makedirs(data_path, exist_ok=True)
 
-    for file in ['human_dental_T.h5ad', 'labels_human_dental.tsv']:
+    for file in ['mouse_labels_clean.csv', 'mouse_clipped.h5ad']:
         print(f'Downloading {file}')
 
         if not os.path.isfile(join(data_path, file)):
             download(
-                remote_name=join('jlehrer', 'dental', file),
+                remote_name=join('jlehrer', 'mouse_benchmark', file),
                 file_name=join(data_path, file),
             )
 
-    class_label = 'cell_type'
-
+    class_label = 'subclass_label'
     module = DataModule(
-        datafiles=[join(data_path, 'human_dental_T.h5ad')],
-        labelfiles=[join(data_path, 'labels_human_dental.tsv')],
+        datafiles=[join(data_path, 'mouse_clipped.h5ad')],
+        labelfiles=[join(data_path, 'mouse_labels_clean.csv')],
         class_label=class_label,
-        sep='\t',
-        batch_size=16,
-        num_workers=0,
+        sep=',',
+        batch_size=32,
+        index_col='cell',
+        num_workers=32,
         deterministic=True,
         normalize=True,
+        assume_numeric_label=False,
     )
 
     wandb_logger = WandbLogger(
-        project=f"Dental Model",
+        project=f"mouse_data Cortical Model",
         name=name,
     )
 
@@ -109,7 +110,7 @@ if __name__ == "__main__":
 
     upload_callback = UploadCallback(
         path='checkpoints',
-        desc='dental'
+        desc='Mouse Cortical Model, C=42'
     )
     
     early_stopping_callback = pl.callbacks.EarlyStopping(
@@ -132,10 +133,13 @@ if __name__ == "__main__":
     )
 
     if not test:
+        module.prepare_data()
+        module.setup()
+
         model = TabNetLightning(
             input_dim=module.num_features,
             output_dim=module.num_labels,
-            weights=compute_class_weights([join(data_path, 'labels_human_dental.tsv')], class_label, sep='\t', device=device),
+            weights=module.weights,
             scheduler_params={
                 'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
                 'factor': 0.75,
@@ -145,18 +149,4 @@ if __name__ == "__main__":
         trainer.fit(model, datamodule=module)
         trainer.test(model, datamodule=module)
     else:
-        checkpoint_path = join(here, '..', 'checkpoints/checkpoint-80-desc-dental.ckpt')
-        if not os.path.isfile(checkpoint_path):
-            os.makedirs(join(here, '..', 'checkpoints'), exist_ok=True)
-            download(
-                remote_name='jlehrer/model_checkpoints/checkpoint-80-desc-dental.ckpt',
-                file_name=checkpoint_path
-            )
-
-        model = TabNetLightning.load_from_checkpoint(
-            join(here, '..', 'checkpoints/checkpoint-80-desc-dental.ckpt'),
-            input_dim=module.input_dim,
-            output_dim=module.output_dim
-        )
-
-        trainer.test(model, datamodule=module)
+        raise NotImplementedError("No checkpoints downloaded yet")

@@ -137,15 +137,6 @@ if __name__ == "__main__":
         model = TabNetLightning(
             input_dim=module.num_features,
             output_dim=module.num_labels,
-            optim_params={
-                'optimizer': torch.optim.Adam,
-                'lr': lr,
-                'weight_decay': weight_decay,
-            },
-            scheduler_params={
-                'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
-                'factor': 0.75,
-            },
             n_d=32, 
             n_a=32,
             n_steps=10,

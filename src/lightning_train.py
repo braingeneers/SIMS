@@ -165,9 +165,13 @@ class DataModule(pl.LightningDataModule):
             print('assume_numeric_label=False, using sklearn.preprocessing.LabelEncoder and encoding target variables.')
 
             unique_targets = list(
-                set(np.concatenate([pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles]))
+                set(
+                    np.concatenate(
+                        [pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles]
+                    )
+                )
             )
-            
+
             le = LabelEncoder()
             le = le.fit(unique_targets)
             
@@ -223,9 +227,9 @@ class DataModule(pl.LightningDataModule):
     def num_labels(self):
         val = []
         for file in self.labelfiles:
-            val.append(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values.max())
+            val.extend(list(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values))
 
-        return max(val) + 1
+        return len(set(val))
 
     @cached_property
     def num_features(self):
@@ -338,10 +342,10 @@ def generate_trainer(
         # gradient_clip_val=0.5,
         logger=wandb_logger,
         max_epochs=max_epochs,
-        # callbacks=[
-        #     uploadcallback, 
-        # ],
-        # val_check_interval=0.25, # Calculate validation every quarter epoch instead of full since dataset is large, and would like to test this 
+        callbacks=[
+            uploadcallback, 
+        ],
+        val_check_interval=0.25, # Calculate validation every quarter epoch instead of full since dataset is large, and would like to test this 
     )
 
     return trainer, model, module

@@ -1,24 +1,26 @@
-from typing import *
 
-import torch 
-import numpy as np 
 import shutil 
 import json 
 import zipfile 
 import io 
+import copy
+import warnings
+from pathlib import Path 
+
+import torch 
+import numpy as np 
+
 import pytorch_lightning as pl 
 from scipy.sparse import csc_matrix 
-from pathlib import Path 
 from pytorch_tabnet.utils import (
     create_explain_matrix,
     ComplexEncoder,
 )
 import torch.nn.functional as F
 from pytorch_tabnet.tab_network import TabNet
-import copy
-import warnings
 from torchmetrics.functional.classification.stat_scores import _stat_scores_update
-
+from tqdm import tqdm 
+from typing import *
 from metrics import aggregate_metrics
 
 class TabNetLightning(pl.LightningModule):
@@ -72,7 +74,7 @@ class TabNetLightning(pl.LightningModule):
             self.optim_params = {
                 'optimizer': torch.optim.Adam,
                 'lr': 0.001,
-                'weight_decay': 0.01,
+                'weight_decay': 0.001,
             }
         else:
             self.optim_params = optim_params
@@ -221,7 +223,7 @@ class TabNetLightning(pl.LightningModule):
     def test_epoch_end(self, step_outputs):
         f1s = self._epoch_end(step_outputs, 'test') 
         print(f'Test f1 is {f1s}')
-        
+
     def configure_optimizers(self):
         if 'optimizer' in self.optim_params:
             optimizer = self.optim_params.pop('optimizer')
@@ -246,7 +248,7 @@ class TabNetLightning(pl.LightningModule):
         self.network.eval()
         res_explain = []
 
-        for batch_nb, data in enumerate(loader):
+        for batch_nb, data in enumerate(tqdm(loader)):
             if isinstance(data, tuple): # if we are running this on already labeled pairs and not just for inference
                 data, _ = data 
                 
@@ -256,8 +258,10 @@ class TabNetLightning(pl.LightningModule):
                     value.cpu().detach().numpy(), self.reducing_matrix
                 )
 
-            original_feat_explain = csc_matrix.dot(M_explain.cpu().detach().numpy(),
-                                                   self.reducing_matrix)
+            original_feat_explain = csc_matrix.dot(
+                M_explain.cpu().detach().numpy(),
+                self.reducing_matrix
+            )
             res_explain.append(original_feat_explain)
 
             if batch_nb == 0:
@@ -267,7 +271,7 @@ class TabNetLightning(pl.LightningModule):
                     res_masks[key] = np.vstack([res_masks[key], value])
 
         res_explain = np.vstack(res_explain)
-
+        
         if normalize:
             res_explain /= np.sum(res_explain, axis=1)[:, None]
 

@@ -37,7 +37,7 @@ class UploadCallback(pl.callbacks.Callback):
         path: str, 
         desc: str, 
         upload_path='model_checkpoints',
-        epochs: int=20,
+        epochs: int=10,
     ) -> None:
         super().__init__()
         self.path = path 

@@ -103,11 +103,6 @@ if __name__ == "__main__":
 
     lr_callback = pl.callbacks.LearningRateMonitor(logging_interval='epoch')
 
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=join(here, 'checkpoints'), 
-        filename='{epoch}-{weighted_val_accuracy}'
-    )
-
     upload_callback = UploadCallback(
         path='checkpoints',
         desc='Mouse Cortical Model, C=42'
@@ -115,7 +110,7 @@ if __name__ == "__main__":
     
     early_stopping_callback = pl.callbacks.EarlyStopping(
         monitor='val_loss',
-        patience=4,
+        patience=50,
     )
 
     trainer = pl.Trainer(
@@ -126,7 +121,6 @@ if __name__ == "__main__":
         gradient_clip_val=0.5,
         callbacks=[
             lr_callback, 
-            checkpoint_callback, 
             upload_callback,
             early_stopping_callback,
         ]

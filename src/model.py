@@ -83,7 +83,7 @@ class TabNetLightning(pl.LightningModule):
             self.scheduler_params={
                 'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
                 'factor': 0.001,
-            },
+            }
         else:
             self.scheduler_params = scheduler_params
 

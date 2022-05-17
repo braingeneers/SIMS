@@ -244,7 +244,10 @@ class TabNetLightning(pl.LightningModule):
             'monitor': 'train_loss',
         }
 
-    def explain(self, loader, normalize=False):
+    def explain(self, loader, cache=False, normalize=False):
+        if cache and self._explain_matrix is not None:
+            return self._explain_matrix 
+            
         self.network.eval()
         res_explain = []
 
@@ -275,17 +278,27 @@ class TabNetLightning(pl.LightningModule):
         if normalize:
             res_explain /= np.sum(res_explain, axis=1)[:, None]
 
+        if cache:
+            self._explain_matrix = res_explain
+
         return res_explain, res_masks
 
     def _compute_feature_importances(self, dataloader):
         M_explain, _ = self.explain(dataloader, normalize=False)
         sum_explain = M_explain.sum(axis=0)
         feature_importances_ = sum_explain / np.sum(sum_explain)
+        
         return feature_importances_
 
-    def feature_importances(self, dataloader):
-        return self._compute_feature_importances(dataloader)
-
+    def feature_importances(self, dataloader, cache=False):
+        if cache and self._feature_importances is not None:
+            return self._feature_importances
+        else:
+            f = self._compute_feature_importances(dataloader)
+            if cache:
+                self._feature_importances = f 
+            return f 
+    
     def save_model(self, path):
         saved_params = {}
         init_params = {}

@@ -1,17 +1,36 @@
 import os
 import pathlib 
 import sys
+import anndata as an
 import torch 
 import argparse 
-import pytorch_lightning as pl 
-from pytorch_lightning.loggers import WandbLogger
 
 from os.path import join, dirname, abspath
 sys.path.append(join(dirname(abspath(__file__)), '..', 'src'))
 
+import pandas as pd 
+import numpy as np 
+import anndata as an 
+import sys, os 
+sys.path.append('../src')
+
+import sys
+import os
+import pathlib 
+from typing import *
+
+import torch
+import numpy as np 
+import pandas as pd 
+import anndata as an
+
+import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger
+
 from data import *
-from model import *
 from lightning_train import *
+from model import *
+from torchmetrics.functional import *
 from networking import download 
 
 if __name__ == "__main__":
@@ -40,48 +59,44 @@ if __name__ == "__main__":
     parser.add_argument(
         '--test',
         action='store_true',
-        required=False
+        required=False,
     )
+
+    device = ('cuda:0' if torch.cuda.is_available() else None)
 
     args = parser.parse_args()
     lr, weight_decay, name, test = args.lr, args.weight_decay, args.name, args.test 
 
     here = pathlib.Path(__file__).parent.resolve()
-    data_path = join(here, '..', 'data', 'retina')
+    data_path = join(here, '..', 'data', 'pancreas')
 
     print('Making data folder')
     os.makedirs(data_path, exist_ok=True)
 
-    for file in ['retina_T.h5ad', 'retina_labels_numeric.csv']:
+    for file in ['labels.csv', 'pancreas.h5ad']:
         print(f'Downloading {file}')
 
         if not os.path.isfile(join(data_path, file)):
             download(
-                remote_name=join('jlehrer', 'retina', file),
+                remote_name=join('jlehrer', 'pancreas_data', file),
                 file_name=join(data_path, file),
             )
 
-    # Define labelfiles and trainer
-    datafiles=[join(data_path, 'retina_T.h5ad')]
-    labelfiles=[join(data_path, 'retina_labels_numeric.csv')]
-
-    device = ('cuda:0' if torch.cuda.is_available() else None)
-
     module = DataModule(
-        datafiles=datafiles,
-        labelfiles=labelfiles,
-        class_label='class_label',
+        datafiles=[join(data_path, 'pancreas.h5ad')],
+        labelfiles=[join(data_path, 'labels.csv')],
+        class_label='celltype',
+        sep=',',
+        batch_size=32,
         index_col='cell',
-        batch_size=16,
         num_workers=0,
-        shuffle=True,
-        drop_last=True,
-        normalize=True,
         deterministic=True,
+        normalize=True,
+        assume_numeric_label=False,
     )
 
     wandb_logger = WandbLogger(
-        project=f"Retina Model",
+        project=f"Pancreas Model",
         name=name,
     )
 
@@ -89,11 +104,12 @@ if __name__ == "__main__":
 
     upload_callback = UploadCallback(
         path='checkpoints',
-        desc='retina'
+        desc='pancreas_model'
     )
+    
     early_stopping_callback = pl.callbacks.EarlyStopping(
         monitor='val_loss',
-        patience=20,
+        patience=50,
     )
 
     trainer = pl.Trainer(
@@ -110,31 +126,20 @@ if __name__ == "__main__":
     )
 
     if not test:
+        module.prepare_data()
+        module.setup()
+
         model = TabNetLightning(
             input_dim=module.num_features,
             output_dim=module.num_labels,
+            weights=module.weights,
+            scheduler_params={
+                'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
+                'factor': 0.75,
+            },
         )
 
-        # train model
         trainer.fit(model, datamodule=module)
         trainer.test(model, datamodule=module)
-    else:  
-        checkpoint_path = join(here, '..', 'checkpoints/checkpoint-80-desc-retina.ckpt')
-
-        if not os.path.isfile(checkpoint_path):
-            os.makedirs(join(here, '..', 'checkpoints'), exist_ok=True)
-            download(
-                'jlehrer/model_checkpoints/checkpoint-80-desc-retina.ckpt',
-                checkpoint_path
-            )
-
-        model = TabNetLightning.load_from_checkpoint(
-            checkpoint_path,
-            input_dim=module.input_dim,
-            output_dim=module.output_dim,
-            n_d=32,
-            n_a=32,
-            n_steps=10,
-        )
-
-        trainer.test(model, datamodule=module)
+    else:
+        raise NotImplementedError("No checkpoints downloaded yet")

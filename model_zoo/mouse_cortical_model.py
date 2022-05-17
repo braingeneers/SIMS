@@ -8,22 +8,8 @@ import argparse
 from os.path import join, dirname, abspath
 sys.path.append(join(dirname(abspath(__file__)), '..', 'src'))
 
-import pandas as pd 
-import numpy as np 
-import anndata as an 
-import sys, os 
-sys.path.append('../src')
-
-import sys
-import os
-import pathlib 
 from typing import *
-
 import torch
-import numpy as np 
-import pandas as pd 
-import anndata as an
-
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 
@@ -105,7 +91,7 @@ if __name__ == "__main__":
 
     upload_callback = UploadCallback(
         path='checkpoints',
-        desc='Mouse Cortical Model, C=42'
+        desc='mouse_cortical_model'
     )
     
     early_stopping_callback = pl.callbacks.EarlyStopping(

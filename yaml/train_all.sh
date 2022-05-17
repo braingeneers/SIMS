@@ -5,3 +5,5 @@ export TYPE=mouse_cortical && export NAME=mouse-cortical && envsubst < yaml/mode
 export TYPE=retina && export NAME=retina && envsubst < yaml/model.yaml | kubectl create -f -
 
 export TYPE=dental && export NAME=dental && envsubst < yaml/model.yaml | kubectl create -f -
+
+export TYPE=pancreas && export NAME=pancreas && envsubst < yaml/model.yaml | kubectl create -f -

@@ -1,35 +1,34 @@
 apiVersion: batch/v1
 kind: Job
-metadata:
-  name: jl-${NAME}-model
+metadata: 
+  name: jl-feature-weights
 spec:
   backoffLimit: 5
   completions: 1
   template:
     metadata:
       labels:
-        k8s-app: jl-${NAME}-model
+        k8s-app: jl-feature-weights
     spec:
       restartPolicy: Never
       containers:
-      - name: jl-${NAME}-model
+      - name: jl-feature-weights
         image: jmlehrer/sims:latest
         command: ["stdbuf", "-i0", "-o0", "-e0", "bash", "-c"]
         env:
         - name: PYTHONUNBUFFERED
           value: "1"
         args: [
-          "wandb login --relogin $(cat wandbcreds) && \
-          python model_zoo/${TYPE}_model.py --name=${NAME}"
+          "python for_paper/feature_masks.py"
         ]
         resources:
           limits:
-            memory: 128Gi
-            cpu: "16"
+            memory: 256Gi
+            cpu: "32"
             nvidia.com/gpu: "1"
           requests:
-            memory: 32Gi
-            cpu: "16"
+            memory: 64Gi
+            cpu: "32"
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: ephemeral
@@ -44,8 +43,3 @@ spec:
       - name: dshm
         emptyDir:
           medium: Memory
-      tolerations:
-        - key: "nautilus.io/chase-ci"
-          operator: "Equal"
-          value: "true"
-          effect: "NoSchedule"

@@ -176,6 +176,8 @@ class DataModule(pl.LightningDataModule):
             le = le.fit(unique_targets)
             
             for idx, file in enumerate(self.labelfiles):
+                print(f'Transforming labelfile {idx + 1}/{len(self.labelfiles)}')
+
                 labels = pd.read_csv(file, sep=self.sep)
                 labels.loc[:, f'categorical_{self.class_label}'] = labels.loc[:, self.class_label]
 

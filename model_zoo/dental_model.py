@@ -126,7 +126,7 @@ if __name__ == "__main__":
     )
 
     if not test:
-        model = TabNetLightning(
+        model = SIMSClassifier(
             input_dim=module.num_features,
             output_dim=module.num_labels,
             weights=compute_class_weights([join(data_path, 'labels_human_dental.tsv')], class_label, sep='\t', device=device),
@@ -147,7 +147,7 @@ if __name__ == "__main__":
                 file_name=checkpoint_path
             )
 
-        model = TabNetLightning.load_from_checkpoint(
+        model = SIMSClassifier.load_from_checkpoint(
             join(here, '..', 'checkpoints/checkpoint-80-desc-dental.ckpt'),
             input_dim=module.input_dim,
             output_dim=module.output_dim

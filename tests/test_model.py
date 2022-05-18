@@ -55,7 +55,7 @@ class TestModel(unittest.TestCase):
             num_workers=0,
         )
 
-        model = TabNetLightning(
+        model = SIMSClassifier(
             input_dim=module.num_features,
             output_dim=module.num_labels,
         )

@@ -110,7 +110,7 @@ if __name__ == "__main__":
     )
 
     if not test:
-        model = TabNetLightning(
+        model = SIMSClassifier(
             input_dim=module.num_features,
             output_dim=module.num_labels,
         )
@@ -128,7 +128,7 @@ if __name__ == "__main__":
                 checkpoint_path
             )
 
-        model = TabNetLightning.load_from_checkpoint(
+        model = SIMSClassifier.load_from_checkpoint(
             checkpoint_path,
             input_dim=module.input_dim,
             output_dim=module.output_dim,

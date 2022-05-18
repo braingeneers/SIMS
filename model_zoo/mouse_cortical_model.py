@@ -116,7 +116,7 @@ if __name__ == "__main__":
         module.prepare_data()
         module.setup()
 
-        model = TabNetLightning(
+        model = SIMSClassifier(
             input_dim=module.num_features,
             output_dim=module.num_labels,
             weights=module.weights,

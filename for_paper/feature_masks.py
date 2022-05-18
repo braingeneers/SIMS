@@ -53,7 +53,7 @@ def explain_retina():
         remote_name=join('jlehrer', 'model_checkpoints', 'checkpoint-80-desc-retina.ckpt'),
         file_name=join(data_path, 'checkpoint-80-desc-retina.ckpt')
     )
-    model = TabNetLightning.load_from_checkpoint(
+    model = SIMSClassifier.load_from_checkpoint(
         join(data_path, 'checkpoint-80-desc-retina.ckpt'),
         input_dim=module.input_dim,
         output_dim=module.output_dim,
@@ -106,7 +106,7 @@ def explain_dental():
         file_name=join(data_path, 'checkpoint-80-desc-dental.ckpt')
     )
 
-    model = TabNetLightning.load_from_checkpoint(
+    model = SIMSClassifier.load_from_checkpoint(
         join(data_path, 'checkpoint-80-desc-dental.ckpt'),
         input_dim=module.input_dim,
         output_dim=module.output_dim,
@@ -157,7 +157,7 @@ def explain_mouse():
         file_name=join(data_path, 'checkpoint-80-desc-dental.ckpt')
     )
 
-    model = TabNetLightning.load_from_checkpoint(
+    model = SIMSClassifier.load_from_checkpoint(
         join(data_path, 'checkpoint-80-desc-dental.ckpt'),
         input_dim=module.input_dim,
         output_dim=module.output_dim,
@@ -209,7 +209,7 @@ def explain_human():
         file_name=join(data_path, 'checkpoint-20-desc-human_cortical.ckpt')
     )
 
-    model = TabNetLightning.load_from_checkpoint(
+    model = SIMSClassifier.load_from_checkpoint(
         join(data_path, 'checkpoint-20-desc-human_cortical.ckpt'),
         input_dim=module.input_dim,
         output_dim=module.output_dim,

@@ -23,7 +23,7 @@ from tqdm import tqdm
 from typing import *
 from metrics import aggregate_metrics
 
-class TabNetLightning(pl.LightningModule):
+class SIMSClassifier(pl.LightningModule):
     def __init__(
         self,
         input_dim,

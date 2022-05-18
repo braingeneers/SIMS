@@ -329,7 +329,7 @@ def generate_trainer(
         num_workers=num_workers,
     )
 
-    model = TabNetLightning(
+    model = SIMSClassifier(
         input_dim=module.num_features,
         output_dim=module.num_labels,
         weighted_metrics=weighted_metrics,

@@ -446,10 +446,9 @@ def clean_sample(
     indices = intersection[1] # List of indices in sorted(currgenes) that equal sorted(refgenes)
     
     axis = (1 if sample.ndim == 2 else 0)
-    sample = np.sort(sample, axis=axis)
     sample = np.take(sample, indices, axis=axis)
-
-    return torch.from_numpy(sample)
+    
+    return sample
 
 def generate_single_dataset(
     datafile: str,

@@ -90,10 +90,11 @@ if __name__ == "__main__":
         normalize=True,
         assume_numeric_label=False,
         subset=sample,
+        stratify=False,
     )
 
     wandb_logger = WandbLogger(
-        project=f"Ablation Study",
+        project=f"Ablation Study, Unstratified",
         name=f"Proportion={prop}",
     )
 

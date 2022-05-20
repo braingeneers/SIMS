@@ -48,7 +48,7 @@ class UploadCallback(pl.callbacks.Callback):
     def on_train_epoch_end(self, trainer, pl_module):
         epoch = trainer.current_epoch
 
-        if epoch % self.epochs == 0: # Save every ten epochs
+        if epoch % self.epochs == 0 and epoch > 0: # Save every ten epochs
             checkpoint = f'checkpoint-{epoch}-desc-{self.desc}.ckpt'
             trainer.save_checkpoint(os.path.join(self.path, checkpoint))
             print(f'Uploading checkpoint at epoch {epoch}')
@@ -179,15 +179,15 @@ class DataModule(pl.LightningDataModule):
                 print(f'Transforming labelfile {idx + 1}/{len(self.labelfiles)}')
 
                 labels = pd.read_csv(file, sep=self.sep)
-                labels.loc[:, f'categorical_{self.class_label}'] = labels.loc[:, self.class_label]
+                
+                if f'categorical_{self.class_label}' not in labels.columns:
+                    labels.loc[:, f'categorical_{self.class_label}'] = labels.loc[:, self.class_label]
 
-                labels.loc[:, self.class_label] = le.transform(
-                    labels.loc[:, f'categorical_{self.class_label}']
-                )
+                    labels.loc[:, self.class_label] = le.transform(
+                        labels.loc[:, f'categorical_{self.class_label}']
+                    )
 
-                labels.to_csv(file, index=False, sep=self.sep) # Don't need to re-index here 
-
-                # self.labelfiles[idx] = file 
+                    labels.to_csv(file, index=False, sep=self.sep) # Don't need to re-index here 
 
     def setup(self, stage: Optional[str] = None):
         print('Creating train/val/test DataLoaders...')

@@ -73,15 +73,17 @@ if __name__ == "__main__":
             file_name=join(data_path, 'mouse_clipped.h5ad')
         )
 
-    human = an.read_h5ad(join(data_path, 'human.h5ad'), backed='r+')
-    mouse = an.read_h5ad(join(data_path, 'mouse_clipped.h5ad'), backed='r+')
+    # human = an.read_h5ad(join(data_path, 'human.h5ad'), backed='r+')
+    # mouse = an.read_h5ad(join(data_path, 'mouse_clipped.h5ad'), backed='r+')
 
-    currgenes = human.var.index.values
-    refgenes = list(set(mouse.var.index.values).intersection(currgenes))
+    # human_cols = [x.strip().upper() for x in human.var.index.values]
+    # mouse_cols = [x.strip().upper() for x in mouse.var.index.values]
+
+    # refgenes = list(set(human_cols).intersection(mouse_cols))
 
     module = DataModule(
         datafiles=[join(data_path, 'human.h5ad')],
-        labelfiles=[join(data_path, 'human_MTG_labels_clean.csv')],
+        labelfiles=[join(data_path, 'human_V1C_labels_clean.csv')],
         class_label='subclass_label',
         sep=',',
         batch_size=16,
@@ -90,21 +92,22 @@ if __name__ == "__main__":
         deterministic=True,
         normalize=True,
         assume_numeric_label=False,
-        currgenes=currgenes,
-        refgenes=refgenes,
-        preprocess=True,
+        stratify=False,
+        # currgenes=human_cols,
+        # refgenes=refgenes,
+        # preprocess=False,
     )
 
     wandb_logger = WandbLogger(
-        project=f"Human Benchmark, MTG real refgenes",
-        name=name,
+        project=f"Human Benchmark, V1C (no ref no strat)",
+        name=f"Human V1c",
     )
 
     lr_callback = pl.callbacks.LearningRateMonitor(logging_interval='epoch')
 
     upload_callback = UploadCallback(
         path='checkpoints',
-        desc='human_benchmark_model_real_refgenes_mtg'
+        desc='human_benchmark_no_refgenes_v1c'
     )
     
     early_stopping_callback = pl.callbacks.EarlyStopping(

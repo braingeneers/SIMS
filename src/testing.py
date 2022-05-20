@@ -5,10 +5,16 @@ from functools import cached_property
 import pandas as pd 
 import torch
 import numpy as np
+import torch
+import scanpy as sc 
+import anndata as an
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from scipy.sparse import issparse
 import pytorch_lightning as pl 
+
+from data import *
+
 
 class DelimitedTestData(Dataset):
     def __init__(
@@ -114,3 +120,110 @@ class TestAnndatasetMatrix(Dataset):
         return (
             self.data.shape[0] if issparse(self.data) else len(self.data) # sparse matrices dont have len :shrug:
         )
+
+def generate_single_test_loader(
+    datafile: str,
+    labelfile: str,
+    class_label: str,
+    index_col: str,
+    sep: str=',',
+    *args,
+    **kwargs,
+):
+    dataset = generate_single_test_dataset(
+        datafile,
+        labelfile,
+        class_label,
+        index_col,
+        sep,
+        *args,
+        **kwargs
+    )
+
+    return CollateLoader(
+        dataset=dataset,
+        *args,
+        **kwargs
+    )
+
+def generate_test_loaders(
+    datafiles: List[str],
+    labelfiles: List[str],
+    class_label: str,
+    index_col: str,
+    sep: str,
+    *args,
+    **kwargs
+) -> CollateLoader:
+    
+    loaders = []
+    for datafile, labelfile in zip(datafiles, labelfiles):
+        dataset = generate_single_test_dataset(
+            datafile,
+            labelfile,
+            class_label,
+            index_col,
+            sep,
+            *args,
+            **kwargs,
+        )
+
+        loaders.append(
+            CollateLoader(
+                dataset=dataset,
+                *args,
+                **kwargs,
+            )
+        )
+
+    return CollateLoader
+
+def generate_single_test_dataset(
+    datafile: str,
+    labelfile: str,
+    class_label: str,
+    index_col: str,
+    sep: str=',',
+    *args,
+    **kwargs,
+) -> Union[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]:
+    """
+    Generate a single dataset without any splitting, if we want to run prediction at inference time 
+
+    :param datafiles: List of absolute paths to csv files under data_path/ that define cell x expression matrices
+    :type datafiles: List[str]
+    :param labelfiles: ist of absolute paths to csv files under data_path/ that define cell x class matrices
+    :type labelfiles: List[str]
+    :param class_label: Column in label files to train on. Must exist in all datasets, this should throw a natural error if it does not. 
+    :type class_label: str
+    :raises ValueError: Errors if user requests to combine datasets but there is only one. This is probability misinformed and should raise an error.
+    :return: Training, validation and test datasets, respectively
+    :rtype: Tuple[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]
+    """
+
+    suffix = pathlib.Path(datafile).suffix 
+
+    if suffix == '.h5ad':
+        data = sc.read_h5ad(datafile)
+        labels = pd.read_csv(labelfile, index_col=index_col, sep=sep).loc[:, class_label].values 
+        dataset = AnnDatasetMatrix(
+            matrix=data.X,
+            labels=labels,
+            *args,
+            **kwargs,
+        )
+    else:
+        if suffix != '.csv' and suffix != '.tsv':
+            print(f'Extension {suffix} not recognized, interpreting as .csv. To silence this warning, pass in explicit file types.')
+
+        dataset = GeneExpressionData(
+                filename=datafile,
+                labelname=labelfile,
+                class_label=class_label,
+                index_col=index_col,
+                sep=sep,
+                *args,
+                **kwargs,
+            )
+
+    return dataset

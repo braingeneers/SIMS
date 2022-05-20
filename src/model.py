@@ -82,7 +82,7 @@ class SIMSClassifier(pl.LightningModule):
         if scheduler_params is None:
             self.scheduler_params={
                 'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
-                'factor': 0.001,
+                'factor': 0.75, # Reduce LR by 25% on plateau
             }
         else:
             self.scheduler_params = scheduler_params
@@ -208,21 +208,25 @@ class SIMSClassifier(pl.LightningModule):
         f1s = 2*(precision * recall) / (precision + recall)
         f1s = np.nan_to_num(f1s)
 
-        self.log(f"{tag}_median_f1", np.nanmedian(f1s), logger=True, on_step=False, on_epoch=True)
-        print(f"Median f1 score is {np.nanmedian(f1s)} for epoch={self.current_epoch}")
+        self.log(
+            f"{tag}_median_f1", 
+            np.nanmedian(f1s), 
+            logger=True, 
+            on_step=False, 
+            on_epoch=True
+        )
 
         return f1s 
 
     # Calculation on epoch end, for "median F1 score"
     def training_epoch_end(self, step_outputs):
-        pass 
+        self._epoch_end(step_outputs,'train')
         
     def validation_epoch_end(self, step_outputs):
-        f1s = self._epoch_end(step_outputs, 'val') 
+        self._epoch_end(step_outputs, 'val') 
     
     def test_epoch_end(self, step_outputs):
-        f1s = self._epoch_end(step_outputs, 'test') 
-        print(f'Test f1 is {f1s}')
+        self._epoch_end(step_outputs, 'test') 
 
     def configure_optimizers(self):
         if 'optimizer' in self.optim_params:

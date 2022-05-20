@@ -5,7 +5,7 @@ import pathlib
 import pandas as pd 
 import torch
 import numpy as np
-import scanpy as sc 
+import anndata as an 
 
 from functools import cached_property, partial
 from itertools import chain 
@@ -393,7 +393,8 @@ def _standard_collate(
     :type transpose: bool
     :return: Collated samples and labels, respectively
     :rtype: Tuple[torch.Tensor, torch.Tensor]
-    """    
+    """
+
     data = torch.stack([x[0] for x in sample])
     labels = torch.tensor([x[1] for x in sample])
 
@@ -442,12 +443,15 @@ def clean_sample(
     :rtype: torch.Tensor
     """
     
-    intersection = np.intersect1d(currgenes, refgenes, return_indices=True)
-    indices = intersection[1] # List of indices in sorted(currgenes) that equal sorted(refgenes)
-    
-    axis = (1 if sample.ndim == 2 else 0)
-    sample = np.take(sample, indices, axis=axis)
-    
+    indices = np.intersect1d(currgenes, refgenes, return_indices=True)[1]
+    # axis = (1 if sample.ndim == 2 else 0)
+    # sample = np.take(sample, indices, axis=axis)
+
+    if sample.ndim == 2:
+        sample = sample[:, indices]
+    else:
+        sample = sample[indices] # in the case of a 1d array (single row)
+
     return sample
 
 def generate_single_dataset(
@@ -455,11 +459,14 @@ def generate_single_dataset(
     labelfile: str,
     class_label: str,
     index_col: str,
-    test_prop=0.2,
-    sep=',',
-    subset=None,
-    stratify=True,
-    deterministic=False,
+    test_prop: float=0.2,
+    sep: str=',',
+    subset: Collection[int]=None,
+    stratify: bool=True,
+    deterministic: bool=False,
+    currgenes: Collection[Any]=None,
+    refgenes: Collection[Any]=None,
+    preprocess: bool=False,
     *args,
     **kwargs,
 ) -> Tuple[Dataset, Dataset, Dataset]:
@@ -476,7 +483,8 @@ def generate_single_dataset(
     :type test_prop: float, optional
     :return: train, val, test Datasets
     :rtype: Tuple[Dataset, Dataset, Dataset]
-    """    
+    """
+
     suffix = pathlib.Path(datafile).suffix
 
     if suffix == '.h5ad':
@@ -500,17 +508,38 @@ def generate_single_dataset(
             random_state=(42 if deterministic else None)
         )
 
-        data = sc.read_h5ad(datafile)
-        train, val, test = (
-            AnnDatasetMatrix(
-                matrix=data.X[split.index],
-                labels=split.values,
-                *args,
-                **kwargs,
+        data = an.read_h5ad(datafile)
+        if preprocess:
+            # Do the entire minibatch preprocessing on the input data
+            matrix = clean_sample(
+                sample=data.X,
+                refgenes=refgenes,
+                currgenes=currgenes,
             )
-            for split in [trainsplit, valsplit, testsplit]
-        )
+
+            train, val, test = (
+                AnnDatasetMatrix(
+                    matrix=matrix[split.index],
+                    labels=split.values,
+                    *args,
+                    **kwargs,
+                )
+                for split in [trainsplit, valsplit, testsplit]
+            )
+        else:
+            train, val, test = (
+                AnnDatasetMatrix(
+                    matrix=data.X[split.index],
+                    labels=split.values,
+                    *args,
+                    **kwargs,
+                )
+                for split in [trainsplit, valsplit, testsplit]
+            )
     else:
+        if preprocess:
+            raise ValueError("Cannot preprocess with delimited files. Use h5ad, loom, or h5 intead.")
+
         if suffix != '.csv' and suffix != '.tsv':
             print(f'Extension {suffix} not recognized, \
                 interpreting as .csv. To silence this warning, pass in explicit file types.')
@@ -559,9 +588,12 @@ def generate_single_dataloader(
     stratify: bool,
     batch_size: int,
     num_workers: int,
+    currgenes: Collection[Any]=None,
+    refgenes: Collection[Any]=None,
+    preprocess: bool=False,
     *args,
     **kwargs,
-) -> Tuple[CollateLoader, CollateLoader, CollateLoader]:
+) -> Union[Tuple[CollateLoader], Tuple[DataLoader]]:
     """
     Generates a train, val, test CollateLoader
 
@@ -578,18 +610,23 @@ def generate_single_dataloader(
         sep=sep,
         subset=subset,
         stratify=stratify,
+        currgenes=currgenes,
+        refgenes=refgenes,
+        preprocess=preprocess,
         *args,
         **kwargs,
     )
 
     loaders = (
         CollateLoader(
-                dataset=dataset, 
-                batch_size=batch_size,
-                num_workers=num_workers,
-                *args,
-                **kwargs,
-            )
+            dataset=dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            refgenes=(None if preprocess else refgenes),
+            currgenes=(None if preprocess else currgenes),
+            *args,
+            **kwargs,
+        )
         for dataset in [train, val, test]
     )
 
@@ -660,113 +697,6 @@ def generate_datasets(
 
     return train_datasets, val_datasets, test_datasets
 
-def generate_single_test_dataset(
-    datafile: str,
-    labelfile: str,
-    class_label: str,
-    index_col: str,
-    sep: str=',',
-    *args,
-    **kwargs,
-) -> Union[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]:
-    """
-    Generate a single dataset without any splitting, if we want to run prediction at inference time 
-
-    :param datafiles: List of absolute paths to csv files under data_path/ that define cell x expression matrices
-    :type datafiles: List[str]
-    :param labelfiles: ist of absolute paths to csv files under data_path/ that define cell x class matrices
-    :type labelfiles: List[str]
-    :param class_label: Column in label files to train on. Must exist in all datasets, this should throw a natural error if it does not. 
-    :type class_label: str
-    :raises ValueError: Errors if user requests to combine datasets but there is only one. This is probability misinformed and should raise an error.
-    :return: Training, validation and test datasets, respectively
-    :rtype: Tuple[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]
-    """
-
-    suffix = pathlib.Path(datafile).suffix 
-
-    if suffix == '.h5ad':
-        data = sc.read_h5ad(datafile)
-        labels = pd.read_csv(labelfile, index_col=index_col, sep=sep).loc[:, class_label].values 
-        dataset = AnnDatasetMatrix(
-            matrix=data.X,
-            labels=labels,
-            *args,
-            **kwargs,
-        )
-    else:
-        if suffix != '.csv' and suffix != '.tsv':
-            print(f'Extension {suffix} not recognized, interpreting as .csv. To silence this warning, pass in explicit file types.')
-
-        dataset = GeneExpressionData(
-                filename=datafile,
-                labelname=labelfile,
-                class_label=class_label,
-                index_col=index_col,
-                sep=sep,
-                *args,
-                **kwargs,
-            )
-
-    return dataset
-
-def generate_single_test_loader(
-    datafile: str,
-    labelfile: str,
-    class_label: str,
-    index_col: str,
-    sep: str=',',
-    *args,
-    **kwargs,
-):
-    dataset = generate_single_test_dataset(
-        datafile,
-        labelfile,
-        class_label,
-        index_col,
-        sep,
-        *args,
-        **kwargs
-    )
-
-    return CollateLoader(
-        dataset=dataset,
-        *args,
-        **kwargs
-    )
-
-def generate_test_loaders(
-    datafiles: List[str],
-    labelfiles: List[str],
-    class_label: str,
-    index_col: str,
-    sep: str,
-    *args,
-    **kwargs
-) -> CollateLoader:
-    
-    loaders = []
-    for datafile, labelfile in zip(datafiles, labelfiles):
-        dataset = generate_single_test_dataset(
-            datafile,
-            labelfile,
-            class_label,
-            index_col,
-            sep,
-            *args,
-            **kwargs,
-        )
-
-        loaders.append(
-            CollateLoader(
-                dataset=dataset,
-                *args,
-                **kwargs,
-            )
-        )
-
-    return CollateLoader
-
 def generate_dataloaders(
     datafiles: List[str], 
     labelfiles: List[str],
@@ -781,7 +711,7 @@ def generate_dataloaders(
     num_workers: int=0,
     *args,
     **kwargs,
-) -> Union[Tuple[List[CollateLoader], List[CollateLoader], List[CollateLoader]], Tuple[SequentialLoader, SequentialLoader, SequentialLoader]]:
+) -> Union[Tuple[CollateLoader, List[CollateLoader]], Tuple[SequentialLoader]]:
     """
     Generates DataLoaders for training, either as a combined list from each datafile or a SequentialLoader to allow sequentially sampling between DataLoaders or DataLoader derived classes.
 

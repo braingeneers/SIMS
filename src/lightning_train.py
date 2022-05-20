@@ -69,7 +69,7 @@ class DataModule(pl.LightningDataModule):
         unzip: bool=True,
         datapath: str=None,
         assume_numeric_label: bool=True,
-        batch_size=4,
+        batch_size=32,
         num_workers=0,
         device=('cuda:0' if torch.cuda.is_available() else None),
         *args,
@@ -255,6 +255,11 @@ class DataModule(pl.LightningDataModule):
     @cached_property
     def output_dim(self):
         return self.num_labels
+
+    def __len__(self):
+        l = [pd.read_csv(f, sep=self.sep).shape[0] for f in self.labelfiles]
+
+        return sum(l)
 
 def generate_trainer(
     datafiles: List[str],

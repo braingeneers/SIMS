@@ -86,7 +86,7 @@ if __name__ == "__main__":
         labelfiles=[join(data_path, 'human_labels_clean.csv')],
         class_label=class_label,
         sep=',',
-        batch_size=32,
+        batch_size=256,
         index_col='cell',
         num_workers=32,
         deterministic=True,
@@ -125,7 +125,6 @@ if __name__ == "__main__":
     )
 
     if not test:
-
         module.prepare_data()
         module.setup()
 
@@ -133,10 +132,6 @@ if __name__ == "__main__":
             input_dim=module.num_features,
             output_dim=module.num_labels,
             weights=module.weights,
-            scheduler_params={
-                'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
-                'factor': 0.75,
-            },
         )
 
         trainer.fit(model, datamodule=module)

@@ -52,7 +52,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     lr, weight_decay, name, test = args.lr, args.weight_decay, args.name, args.test 
 
-    print(test)
     here = pathlib.Path(__file__).parent.resolve()
     data_path = join(here, '..', 'data', 'mouse')
 
@@ -68,46 +67,46 @@ if __name__ == "__main__":
                 file_name=join(data_path, file),
             )
 
-    # # Calculate gene intersection
-    # mouse_atlas = an.read_h5ad(join(data_path, 'MouseAdultInhibitoryNeurons.h5ad'))
-    # mo_data = an.read_h5ad(join(data_path, 'Mo_PV_paper_TDTomato_mouseonly.h5ad'))
+    # Calculate gene intersection
+    mouse_atlas = an.read_h5ad(join(data_path, 'MouseAdultInhibitoryNeurons.h5ad'))
+    mo_data = an.read_h5ad(join(data_path, 'Mo_PV_paper_TDTomato_mouseonly.h5ad'))
 
-    # g1 = mo_data.var.index.values
-    # g2 = mouse_atlas.var.index.values
+    mo_genes = mo_data.var.index.values
+    atlas_genes = mouse_atlas.var.index.values
 
-    # g1 = [x.strip().upper() for x in g1]
-    # g2 = [x.strip().upper() for x in g2]
+    mo_genes = [x.strip().upper() for x in mo_genes]
+    atlas_genes = [x.strip().upper() for x in atlas_genes]
 
-    # refgenes = sorted(list(set(g1).intersection(g2)))
+    refgenes = sorted(list(set(mo_genes).intersection(atlas_genes)))
 
     # # Define labelfiles and trainer 
     datafiles=[join(data_path, 'MouseAdultInhibitoryNeurons.h5ad')]
     labelfiles=[join(data_path, 'MouseAdultInhibitoryNeurons_labels.csv')]
 
     device = ('cuda:0' if torch.cuda.is_available() else None)
+
     module = DataModule(
         datafiles=datafiles,
         labelfiles=labelfiles,
         class_label='numeric_class',
-        batch_size=64,
-        num_workers=0,
+        batch_size=256,
+        num_workers=32,
         shuffle=True,
         drop_last=True,
         normalize=True,
-        # refgenes=refgenes,
-        # currgenes=g2,
+        refgenes=refgenes,
+        currgenes=atlas_genes,
         deterministic=True,
     )
+
+    print(f'Number of classes in {__file__} is {module.output_dim}')
+
     wandb_logger = WandbLogger(
-        project=f"Mouse Model",
+        project=f"Mostajo Mouse Model",
         name=name,
     )
 
     lr_callback = pl.callbacks.LearningRateMonitor(logging_interval='epoch')
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=join(here, 'checkpoints'), 
-        filename='{epoch}-{weighted_val_accuracy}'
-    )
 
     upload_callback = UploadCallback(
         path='checkpoints',
@@ -116,7 +115,7 @@ if __name__ == "__main__":
 
     early_stopping_callback = pl.callbacks.EarlyStopping(
         monitor='val_loss',
-        patience=4,
+        patience=20,
     )
 
     trainer = pl.Trainer(
@@ -127,7 +126,6 @@ if __name__ == "__main__":
         gradient_clip_val=0.5,
         callbacks=[
             lr_callback, 
-            checkpoint_callback, 
             upload_callback,
             early_stopping_callback,
         ]
@@ -137,9 +135,6 @@ if __name__ == "__main__":
         model = SIMSClassifier(
             input_dim=module.num_features,
             output_dim=module.num_labels,
-            n_d=32, 
-            n_a=32,
-            n_steps=10,
         )
 
         # train model

@@ -36,20 +36,6 @@ from networking import download
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--lr',
-        type=float,
-        default=0.02,
-        required=False,
-    )
-
-    parser.add_argument(
-        '--weight-decay',
-        type=float,
-        default=3e-4,
-        required=False,
-    )
-
-    parser.add_argument(
         '--name',
         type=str,
         default=None,
@@ -65,7 +51,7 @@ if __name__ == "__main__":
     device = ('cuda:0' if torch.cuda.is_available() else None)
 
     args = parser.parse_args()
-    lr, weight_decay, name, test = args.lr, args.weight_decay, args.name, args.test 
+    name, test = args.name, args.test 
 
     here = pathlib.Path(__file__).parent.resolve()
     data_path = join(here, '..', 'data', 'pancreas')
@@ -87,9 +73,9 @@ if __name__ == "__main__":
         labelfiles=[join(data_path, 'labels.csv')],
         class_label='celltype',
         sep=',',
-        batch_size=32,
+        batch_size=256,
         index_col='cell',
-        num_workers=0,
+        num_workers=32,
         deterministic=True,
         normalize=True,
         assume_numeric_label=False,

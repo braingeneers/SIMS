@@ -45,7 +45,7 @@ if __name__ == "__main__":
     print('Making data folder')
     os.makedirs(data_path, exist_ok=True)
 
-    labels = list_objects('jlehrer/benchmark/human_labels')
+    labels = list_objects('jlehrer/benchmark/mouse_labels')
     # Download training labels set 
     for file in labels:
         print(f'Downloading {file}')
@@ -82,8 +82,8 @@ if __name__ == "__main__":
     # refgenes = list(set(human_cols).intersection(mouse_cols))
 
     module = DataModule(
-        datafiles=[join(data_path, 'human.h5ad')],
-        labelfiles=[join(data_path, 'human_V1C_labels_clean.csv')],
+        datafiles=[join(data_path, 'mouse_clipped.h5ad')],
+        labelfiles=[join(data_path, 'mouse_VISp_labels_clean.csv')],
         class_label='subclass_label',
         sep=',',
         batch_size=16,
@@ -92,21 +92,22 @@ if __name__ == "__main__":
         deterministic=True,
         normalize=True,
         assume_numeric_label=False,
+        stratify=False,
         # currgenes=human_cols,
         # refgenes=refgenes,
         # preprocess=False,
     )
 
     wandb_logger = WandbLogger(
-        project=f"Human Benchmark, V1C",
-        name=f"Human V1c",
+        project=f"Mouse Benchmark",
+        name=f"Mouse Benchmark",
     )
 
     lr_callback = pl.callbacks.LearningRateMonitor(logging_interval='epoch')
 
     upload_callback = UploadCallback(
         path='checkpoints',
-        desc='human_benchmark_v1c_no_refgenes'
+        desc='mouse_benchmark_visp'
     )
     
     early_stopping_callback = pl.callbacks.EarlyStopping(

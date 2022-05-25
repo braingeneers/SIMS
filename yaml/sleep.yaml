@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rna-seq-sleep
+spec:
+  backoffLimit: 0
+  completions: 1
+  template:
+    metadata:
+      labels:
+        k8s-app: rna-seq-sleep
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: rna-seq-sleep
+        image: jmlehrer/cell-exploration:latest
+        command: ["stdbuf", "-i0", "-o0", "-e0", "bash", "-c"]
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        args: ["sleep 1000000"]
+        resources:
+          limits:
+            memory: 100Gi
+            cpu: "16"
+            nvidia.com/gpu: "1"
+          requests:
+            memory: 32Gi
+            cpu: "8"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: ephemeral
+          mountPath: "/data"
+      volumes:
+      # Ephemeral storage
+      - name: ephemeral
+        emptyDir: {}

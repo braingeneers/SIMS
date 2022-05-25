@@ -496,11 +496,12 @@ def generate_single_dataset(
 
         # Make stratified split on labels
         trainsplit, valsplit = train_test_split(
-            current_labels, 
+            current_labels,
             stratify=(current_labels if stratify else None), 
             test_size=test_prop,
             random_state=(42 if deterministic else None)
         )
+        
         trainsplit, testsplit = train_test_split(
             trainsplit, 
             stratify=(trainsplit if stratify else None), 

@@ -1,6 +1,7 @@
 import linecache
 from typing import *
 from functools import cached_property
+import pathlib 
 
 import pandas as pd 
 import torch
@@ -13,10 +14,9 @@ from torch.utils.data import Dataset, DataLoader
 from scipy.sparse import issparse
 import pytorch_lightning as pl 
 
-from data import *
+from .data import *
 
-
-class DelimitedTestData(Dataset):
+class TestDelimitedData(Dataset):
     def __init__(
         self, 
         datafile: str,
@@ -97,10 +97,10 @@ class DelimitedTestData(Dataset):
 class TestAnndatasetMatrix(Dataset):
     def __init__(self,
         matrix: np.ndarray,
+        indices: Collection[int]=None,
     ) -> None:
         super().__init__()
-
-        self.data = matrix
+        self.data = (matrix if indices is None else matrix[indices, :])
         
     def __getitem__(self, idx):
         if isinstance(idx, slice):
@@ -123,21 +123,15 @@ class TestAnndatasetMatrix(Dataset):
 
 def generate_single_test_loader(
     datafile: str,
-    labelfile: str,
-    class_label: str,
-    index_col: str,
     sep: str=',',
     *args,
     **kwargs,
 ):
     dataset = generate_single_test_dataset(
         datafile,
-        labelfile,
-        class_label,
-        index_col,
         sep,
         *args,
-        **kwargs
+        **kwargs,
     )
 
     return CollateLoader(
@@ -154,7 +148,7 @@ def generate_test_loaders(
     sep: str,
     *args,
     **kwargs
-) -> CollateLoader:
+) -> SequentialLoader:
     
     loaders = []
     for datafile, labelfile in zip(datafiles, labelfiles):
@@ -176,7 +170,7 @@ def generate_test_loaders(
             )
         )
 
-    return CollateLoader
+    return SequentialLoader(loaders)
 
 def generate_single_test_dataset(
     datafile: str,
@@ -186,7 +180,7 @@ def generate_single_test_dataset(
     sep: str=',',
     *args,
     **kwargs,
-) -> Union[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]:
+) -> Union[TestDelimitedData, TestAnndatasetMatrix]:
     """
     Generate a single dataset without any splitting, if we want to run prediction at inference time 
 
@@ -205,10 +199,8 @@ def generate_single_test_dataset(
 
     if suffix == '.h5ad':
         data = sc.read_h5ad(datafile)
-        labels = pd.read_csv(labelfile, index_col=index_col, sep=sep).loc[:, class_label].values 
-        dataset = AnnDatasetMatrix(
+        dataset = TestAnndatasetMatrix(
             matrix=data.X,
-            labels=labels,
             *args,
             **kwargs,
         )
@@ -216,11 +208,8 @@ def generate_single_test_dataset(
         if suffix != '.csv' and suffix != '.tsv':
             print(f'Extension {suffix} not recognized, interpreting as .csv. To silence this warning, pass in explicit file types.')
 
-        dataset = GeneExpressionData(
+        dataset = TestDelimitedData(
                 filename=datafile,
-                labelname=labelfile,
-                class_label=class_label,
-                index_col=index_col,
                 sep=sep,
                 *args,
                 **kwargs,

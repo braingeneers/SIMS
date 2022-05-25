@@ -65,22 +65,21 @@ if __name__ == "__main__":
     print('Making data folder')
     os.makedirs(data_path, exist_ok=True)
 
-    for file in ['human_labels_clean.csv', 'human.h5ad']:
+    for file in ['mouse_labels_clean.csv', 'mouse_clipped.h5ad']:
         print(f'Downloading {file}')
 
         if not os.path.isfile(join(data_path, file)):
             download(
-                remote_name=join('jlehrer', 'human_benchmark', file),
+                remote_name=join('jlehrer', 'mouse_benchmark', file),
                 file_name=join(data_path, file),
             )
 
-    size = pd.read_csv(join(data_path, 'human_labels_clean.csv')).shape[0]
+    size = pd.read_csv(join(data_path, 'mouse_labels_clean.csv')).shape[0]
     sample = int(prop * size)
     sample = random.sample(range(0, size), sample)
-
     module = DataModule(
-        datafiles=[join(data_path, 'human.h5ad')],
-        labelfiles=[join(data_path, 'human_labels_clean.csv')],
+        datafiles=[join(data_path, 'mouse_clipped.h5ad')],
+        labelfiles=[join(data_path, 'mouse_labels_clean.csv')],
         class_label='subclass_label',
         sep=',',
         batch_size=64,
@@ -89,20 +88,22 @@ if __name__ == "__main__":
         deterministic=True,
         normalize=True,
         assume_numeric_label=False,
-        subset=sample,
-        stratify=False,
+        subset=(sample if prop < 1 else None), # dont do this if we're using the entire dataset 
+        stratify=True,
     )
 
+    print(f"{len(sample)} / {len(module)}")
+
     wandb_logger = WandbLogger(
-        project=f"Ablation Study, Unstratified",
-        name=f"Proportion={prop}",
+        project=f"Ablation Study, Mouse",
+        name=f"mouse_proportion={prop}",
     )
 
     lr_callback = pl.callbacks.LearningRateMonitor(logging_interval='epoch')
 
     upload_callback = UploadCallback(
         path='checkpoints',
-        desc='human_cortical'
+        desc=f'ablation_mouse_{prop}'
     )
     
     early_stopping_callback = pl.callbacks.EarlyStopping(

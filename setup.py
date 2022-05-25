@@ -17,7 +17,8 @@ requirements = [
     "pytorch_tabnet",
     "torchmetrics",
     "sklearn",
-    "scipy"
+    "scipy",
+    "wandb",
 ]
 
 setup_requirements = requirements.copy()
@@ -52,12 +53,11 @@ setup(
     include_package_data=True,
     keywords='scsims',
     name='scsims',
-    package_dir={'': 'src'},
-    packages=find_packages(exclude=['tests'], where='src'),
+    packages=find_packages(exclude=['tests']),
     setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/jlehrer1/sims',
-    version='0.0.2',
+    version='0.0.6',
     zip_safe=False,
 )

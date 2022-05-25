@@ -14,12 +14,12 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from sklearn.preprocessing import LabelEncoder 
 
-from data import generate_dataloaders, compute_class_weights
 
 import sys, os 
 from os.path import join
 
-from networking import upload, download_raw_expression_matrices
+from .networking import upload, download_raw_expression_matrices
+from .data import generate_dataloaders, compute_class_weights
 
 here = pathlib.Path(__file__).parent.absolute()
 

@@ -14,7 +14,7 @@ from torch.utils.data import Dataset, DataLoader
 from scipy.sparse import issparse
 import pytorch_lightning as pl 
 
-from data import *
+from .data import *
 
 class TestDelimitedData(Dataset):
     def __init__(

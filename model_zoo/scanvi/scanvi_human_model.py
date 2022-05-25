@@ -24,20 +24,20 @@ from networking import download, list_objects
 here = pathlib.Path(__file__).parent.resolve()
 
 # Download training data
-for file in ['human_labels_clean.csv', 'human.h5ad']:
+for file in ['human_labels.csv', 'human.h5ad']:
     print(f'Downloading {file}')
 
     if not os.path.isfile(file):
         download(
             remote_name=join('jlehrer', 'human_benchmark', file),
-            file_name=file,
+            file_name=join(here, file),
         )
 
 # Set up the data for scVI
-data = an.read_h5ad('human.h5ad')
+data = an.read_h5ad(join(here, 'human.h5ad'))
 data.X = data.X.todense()
 
-labels = pd.read_csv('human_labels.csv', index_col="sample_name")
+labels = pd.read_csv(join(here, 'human_labels.csv'), index_col="sample_name")
 
 nan_indices = np.where(labels["subclass_label"].isna())[0]
 

@@ -89,8 +89,8 @@ if __name__ == "__main__":
         datafiles=datafiles,
         labelfiles=labelfiles,
         class_label='numeric_class',
-        batch_size=256,
-        num_workers=32,
+        batch_size=8,
+        num_workers=0,
         shuffle=True,
         drop_last=True,
         normalize=True,
@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     upload_callback = UploadCallback(
         path='checkpoints',
-        desc='mostajo-mouse-5-24-22-more-layers_weighted'
+        desc='mostajo-mouse-5-24-22-more-more-layers-weighted'
     )
 
     early_stopping_callback = pl.callbacks.EarlyStopping(
@@ -138,8 +138,8 @@ if __name__ == "__main__":
         model = SIMSClassifier(
             input_dim=module.num_features,
             output_dim=module.num_labels,
-            n_d=32,
-            n_a=32,
+            n_d=64,
+            n_a=64,
             n_steps=10,
             weights=module.weights,
         )

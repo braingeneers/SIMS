@@ -10,6 +10,14 @@ requirements = [
     "numpy",
     "tqdm",
     "boto3",
+    "torch",
+    "pytorch_lightning",
+    "scanpy",
+    "anndata",
+    "pytorch_tabnet",
+    "torchmetrics",
+    "sklearn",
+    "scipy"
 ]
 
 setup_requirements = requirements.copy()
@@ -36,7 +44,7 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
     ],
-    description="A small library for taking the transpose of arbitrarily large .csvs",
+    description="Scalable, Interpretable Deep Learning for Single-Cell RNA-seq Classification",
     install_requires=requirements.copy(),
     license="MIT license",
     long_description=README,
@@ -44,11 +52,12 @@ setup(
     include_package_data=True,
     keywords='scsims',
     name='scsims',
-    packages=find_packages(exclude=['tests']),
+    package_dir={'': 'src'},
+    packages=find_packages(exclude=['tests'], where='src'),
     setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/jlehrer1/sims',
-    version='0.0.1',
+    version='0.0.2',
     zip_safe=False,
 )

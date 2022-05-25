@@ -17,7 +17,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from scipy.sparse import issparse
 import pytorch_lightning as pl 
 
-class GeneExpressionData(Dataset):
+class DelimitedDataset(Dataset):
     def __init__(
         self, 
         filename: str,
@@ -32,7 +32,7 @@ class GeneExpressionData(Dataset):
         **kwargs, # To handle extraneous inputs
     ):
         """
-        Initialization method for GeneExpressionData.
+        Initialization method for DelimitedDataset.
 
         The filename contains a delimited text file where ROWS are cells and the COLUMNS are the genes measured. The labelname is a delimited text file 
         containing the class_label column, and optionally an index_col. 
@@ -271,7 +271,7 @@ class CollateLoader(DataLoader):
         """
         Initializes a CollateLoader for efficient numerical batch-wise transformations
 
-        :param dataset: GeneExpressionDataset to create DataLoader from
+        :param dataset: DelimitedDatasetset to create DataLoader from
         :type dataset: Type[Dataset]
         :param refgenes: Optional, list of columns to take intersection with , defaults to None
         :type refgenes: List[str], optional
@@ -351,7 +351,7 @@ def _collate_with_refgenes(
     """
     Collate minibatch of samples where we're intersecting the columns between refgenes and currgenes,
 
-    :param sample: List of samples from GeneExpressionData object
+    :param sample: List of samples from DelimitedDataset object
     :type sample: List[tuple]
     :param refgenes: List of reference genes
     :type refgenes: List[str]
@@ -385,7 +385,7 @@ def _standard_collate(
     """
     Collate minibatch of samples, optionally normalizing and transposing. 
 
-    :param sample: List of GeneExpressionData items to collate
+    :param sample: List of DelimitedDataset items to collate
     :type sample: List[tuple]
     :param normalize: boolean, indicates if we should transpose the minibatch (in the case of incorrectly formatted .csv data)
     :type normalize: bool
@@ -444,9 +444,6 @@ def clean_sample(
     """
     
     indices = np.intersect1d(currgenes, refgenes, return_indices=True)[1]
-    # axis = (1 if sample.ndim == 2 else 0)
-    # sample = np.take(sample, indices, axis=axis)
-
     if sample.ndim == 2:
         sample = sample[:, indices]
     else:
@@ -563,7 +560,7 @@ def generate_single_dataset(
         )
 
         train, val, test = (
-            GeneExpressionData(
+            DelimitedDataset(
                 filename=datafile,
                 labelname=labelfile,
                 class_label=class_label,

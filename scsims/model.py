@@ -27,8 +27,6 @@ from pytorch_tabnet.tab_network import TabNet
 from torchmetrics.functional.classification.stat_scores import _stat_scores_update
 from tqdm import tqdm 
 
-from .metrics import aggregate_metrics
-
 class SIMSClassifier(pl.LightningModule):
     def __init__(
         self,

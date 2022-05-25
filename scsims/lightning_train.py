@@ -1,6 +1,12 @@
 import os
 import pathlib 
-from typing import *
+from typing import (
+    List,
+    Dict,
+    Optional,
+    Any,
+    Tuple,
+)
 
 import torch
 import numpy as np 
@@ -13,50 +19,14 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from sklearn.preprocessing import LabelEncoder 
+import urllib 
 
-
-import sys, os 
+import os 
 from os.path import join
 
-from .networking import upload, download_raw_expression_matrices
 from .data import generate_dataloaders, compute_class_weights
 
 here = pathlib.Path(__file__).parent.absolute()
-
-class UploadCallback(pl.callbacks.Callback):
-    """Custom PyTorch callback for uploading model checkpoints to the braingeneers S3 bucket.
-    
-    Parameters:
-    path: Local path to folder where model checkpoints are saved
-    desc: Description of checkpoint that is appended to checkpoint file name on save
-    upload_path: Subpath in braingeneersdev/jlehrer/ to upload model checkpoints to
-    """
-    
-    def __init__(
-        self, 
-        path: str, 
-        desc: str, 
-        upload_path='model_checkpoints',
-        epochs: int=10,
-    ) -> None:
-        super().__init__()
-        self.path = path 
-        self.desc = desc
-        self.upload_path = upload_path
-        self.epochs = epochs 
-
-    def on_train_epoch_end(self, trainer, pl_module):
-        epoch = trainer.current_epoch
-
-        if epoch % self.epochs == 0 and epoch > 0: # Save every ten epochs
-            checkpoint = f'checkpoint-{epoch}-desc-{self.desc}.ckpt'
-            trainer.save_checkpoint(os.path.join(self.path, checkpoint))
-            print(f'Uploading checkpoint at epoch {epoch}')
-            
-            upload(
-                os.path.join(self.path, checkpoint),
-                os.path.join('jlehrer', self.upload_path, checkpoint)
-            )
 
 class DataModule(pl.LightningDataModule):
     def __init__(
@@ -313,11 +283,6 @@ def generate_trainer(
         name=wandb_name
     )
 
-    uploadcallback = UploadCallback(
-        path=os.path.join(here, 'checkpoints'),
-        desc=wandb_name
-    )
-
     early_stop_callback = EarlyStopping(
         monitor=("weighted_val_accuracy" if weighted_metrics else "val_accuarcy"), 
         min_delta=0.00, 
@@ -357,3 +322,54 @@ def generate_trainer(
 
     return trainer, model, module
 
+
+
+def download_raw_expression_matrices(
+    datasets: Dict[str, Tuple[str, str]],
+    unzip: bool=True,
+    datapath: str=None
+) -> None:
+    """Downloads all raw datasets and label sets from cells.ucsc.edu, and then unzips them locally
+
+    :param datasets: Dictionary of datasets such that each key maps to a tuple containing the expression matrix csv url in the first element,
+                    and the label csv url in the second url, defaults to None
+    :type datasets: Dict[str, Tuple[str, str]], optional
+    :param upload: Whether or not to also upload data to the braingeneersdev S3 bucket , defaults to False
+    :type upload: bool, optional
+    :param unzip: Whether to also unzip expression matrix, defaults to False
+    :type unzip: bool, optional
+    :param datapath: Path to folder to download data to. Otherwise, defaults to data/
+    :type datapath: str, optional
+    """    
+    # {local file name: [dataset url, labelset url]}
+    data_path = (datapath if datapath is not None else os.path.join(here, '..', '..', '..', 'data'))
+
+    for file, links in datasets.items():
+        datafile_path = os.path.join(data_path, 'raw', file)
+
+        labelfile = f'{file[:-4]}_labels.tsv'
+
+        datalink, _ = links
+
+        # First, make the required folders if they do not exist 
+        for dir in 'raw':
+            os.makedirs(os.path.join(data_path, dir), exist_ok=True)
+
+        # Download and unzip data file if it doesn't exist 
+        if not os.path.isfile(datafile_path):
+            print(f'Downloading zipped data for {file}')
+            urllib.request.urlretrieve(
+                datalink,
+                f'{datafile_path}.gz',
+            )
+
+            if unzip:
+                print(f'Unzipping {file}')
+                os.system(
+                    f'zcat < {datafile_path}.gz > {datafile_path}'
+                )
+
+                print(f'Deleting compressed data')
+                os.system(
+                    f'rm -rf {datafile_path}.gz'
+                )

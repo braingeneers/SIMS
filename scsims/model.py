@@ -258,12 +258,14 @@ class SIMSClassifier(pl.LightningModule):
             
         self.network.eval()
         res_explain = []
+        labels = []
 
         for batch_nb, data in enumerate(tqdm(loader)):
             if isinstance(data, tuple): # if we are running this on already labeled pairs and not just for inference
-                data, _ = data 
-                
-            M_explain, masks = self.network.forward_masks(data)
+                X, label = data 
+                labels.extend(label.numpy())        
+
+            M_explain, masks = self.network.forward_masks(X)
             for key, value in masks.items():
                 masks[key] = csc_matrix.dot(
                     value.cpu().detach().numpy(), self.reducing_matrix
@@ -273,6 +275,7 @@ class SIMSClassifier(pl.LightningModule):
                 M_explain.cpu().detach().numpy(),
                 self.reducing_matrix
             )
+            
             res_explain.append(original_feat_explain)
 
             if batch_nb == 0:
@@ -289,7 +292,7 @@ class SIMSClassifier(pl.LightningModule):
         if cache:
             self._explain_matrix = res_explain
 
-        return res_explain, res_masks
+        return res_explain, labels 
 
     def _compute_feature_importances(self, dataloader):
         M_explain, _ = self.explain(dataloader, normalize=False)

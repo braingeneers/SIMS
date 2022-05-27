@@ -1,5 +1,9 @@
 import linecache
-from typing import *
+from typing import (
+    List,
+    Any,
+    Collection,
+)
 from functools import cached_property
 import pathlib 
 
@@ -25,7 +29,7 @@ class TestDelimitedData(Dataset):
         skip=3,
         cast=True,
         sep=',',
-        columns: List[any]=None,
+        columns: List[Any]=None,
         *args,
         **kwargs, # To handle extraneous inputs
     ):

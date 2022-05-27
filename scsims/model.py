@@ -1,4 +1,3 @@
-
 import shutil 
 import json 
 import zipfile 
@@ -15,7 +14,6 @@ from functools import partial
 import torch 
 import numpy as np 
 import torchmetrics 
-
 import pytorch_lightning as pl 
 from scipy.sparse import csc_matrix 
 from pytorch_tabnet.utils import (
@@ -275,7 +273,7 @@ class SIMSClassifier(pl.LightningModule):
                 M_explain.cpu().detach().numpy(),
                 self.reducing_matrix
             )
-            
+
             res_explain.append(original_feat_explain)
 
             if batch_nb == 0:

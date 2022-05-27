@@ -24,6 +24,14 @@ import torch.nn.functional as F
 from pytorch_tabnet.tab_network import TabNet
 from torchmetrics.functional.classification.stat_scores import _stat_scores_update
 from tqdm import tqdm 
+from torchmetrics.functional import (
+    precision,
+    recall,
+    accuracy,
+    f1_score,
+    specificity,
+    auroc,
+)
 
 class SIMSClassifier(pl.LightningModule):
     def __init__(
@@ -421,51 +429,22 @@ def median_f1(tps, fps, fns):
     
     return np.nanmedian(f1s)
 
-def per_class_f1(*args, **kwargs):
-    res = torchmetrics.functional.f1_score(*args, **kwargs, average='none')
-    return res
-
-def per_class_precision(*args, **kwargs):
-    res = torchmetrics.functional.precision(*args, **kwargs, average='none')
-    
-    return res
-
-def per_class_recall(*args, **kwargs):
-    res = torchmetrics.functional.precision(*args, **kwargs, average='none')
-    
-    return res 
-
-def weighted_accuracy(*args, **kwargs):
-    res = torchmetrics.functional.accuracy(*args, **kwargs, average='weighted')
-    
-    return res 
-
-def balanced_accuracy(*args, **kwargs):
-    res = torchmetrics.functional.accuracy(*args, **kwargs, average='macro')
-    
-    return res 
-
 def aggregate_metrics(num_classes) -> Dict[str, Callable]:
     metrics = {
         # Accuracies
-        'total_accuracy': torchmetrics.functional.accuracy,
-        'balanced_accuracy': partial(balanced_accuracy, num_classes=num_classes),
-        'weighted_accuracy': partial(weighted_accuracy, num_classes=num_classes),
+        'micro_accuracy': accuracy,
+        'macro_accuracy': partial(accuracy, num_classes=num_classes, average="macro"),
+        'weighted_accuracy': partial(accuracy, num_classes=num_classes, average="weighted"),
         
-        # Precision, recall and f1s
-        'precision': torchmetrics.functional.precision,
-        'recall': torchmetrics.functional.recall,
-        'f1': torchmetrics.functional.f1_score,
-        
-        # Per class 
-        'per_class_f1': partial(per_class_f1, num_classes=num_classes),
-        'per_class_precision': partial(per_class_precision, num_classes=num_classes),
-        'per_class_recall': partial(per_class_recall, num_classes=num_classes),
+        # Precision, recall and f1s, all macro weighted
+        'precision': partial(precision, num_classes=num_classes, average="macro"),
+        'recall': partial(recall, num_classes=num_classes, average="macro"),
+        'f1': partial(f1_score, num_classes=num_classes, average="macro"),
         
         # Random stuff I might want
-        'specificity': partial(torchmetrics.functional.specificity, num_classes=num_classes),
-        'confusion_matrix': partial(torchmetrics.functional.confusion_matrix, num_classes=num_classes),
-        'auroc': partial(torchmetrics.functional.auroc, num_classes=num_classes)
+        'specificity': partial(specificity, num_classes=num_classes, average="macro"),
+        'confusion_matrix': partial(confusion_matrix, num_classes=num_classes),
+        'auroc': partial(auroc, num_classes=num_classes, average="macro")
     }
     
     return metrics 

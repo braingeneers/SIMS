@@ -253,7 +253,7 @@ class AnnDatasetMatrix(Dataset):
     @property 
     def shape(self):
         return self.data.shape 
-    
+
 class CollateLoader(DataLoader):
     def __init__(
         self,

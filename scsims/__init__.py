@@ -21,3 +21,5 @@ from .model import (
     SIMSClassifier,
     aggregate_metrics,
 )
+
+from .scvi_api import SIMS

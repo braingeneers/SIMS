@@ -140,7 +140,7 @@ class SIMSClassifier(pl.LightningModule):
         y: torch.Tensor, 
         tag: str,
         on_epoch=True, 
-        on_step=False,
+        on_step=True,
     ):
         for name, metric in self.metrics.items():
             val = metric(y_hat, y)
@@ -443,7 +443,7 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
         
         # Random stuff I might want
         'specificity': partial(specificity, num_classes=num_classes, average="macro"),
-        'confusion_matrix': partial(confusion_matrix, num_classes=num_classes),
+        # 'confusion_matrix': partial(confusion_matrix, num_classes=num_classes),
         'auroc': partial(auroc, num_classes=num_classes, average="macro")
     }
     

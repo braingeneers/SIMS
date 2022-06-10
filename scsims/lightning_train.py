@@ -36,8 +36,7 @@ class DataModule(pl.LightningDataModule):
         urls: Dict[str, List[str]]=None,
         sep: str=None,
         unzip: bool=True,
-        datapath: str=None,
-        assume_numeric_label: bool=True,
+        datapath: str='',
         batch_size=32,
         num_workers=0,
         device=('cuda:0' if torch.cuda.is_available() else None),
@@ -86,10 +85,7 @@ class DataModule(pl.LightningDataModule):
         self.class_label = class_label
         self.urls = urls 
         self.unzip = unzip 
-        self.datapath = (
-            datapath if datapath is not None else join(here, '..', '..', '..', 'data', 'raw')
-        )
-        self.assume_numeric_label = assume_numeric_label
+        self.datapath = datapath 
         self.batch_size = batch_size
         self.num_workers = num_workers
 
@@ -129,20 +125,22 @@ class DataModule(pl.LightningDataModule):
                 sep=self.sep,
                 datapath=self.datapath,
             )
-        
-        if not self.assume_numeric_label:
-            print('assume_numeric_label=False, using sklearn.preprocessing.LabelEncoder and encoding target variables.')
 
-            unique_targets = list(
-                set(
-                    np.concatenate(
-                        [pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles]
-                    )
+        self._encode_labels()
+        
+    def _encode_labels(self):
+        unique_targets = np.array(list(
+            set(
+                np.concatenate(
+                    [pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles]
                 )
             )
-
-            le = LabelEncoder()
-            le = le.fit(unique_targets)
+        ))
+        
+        if not np.issubdtype(unique_targets.dtype, np.number):
+            print('Labels are non-numeric, using sklearn.preprocessing.LabelEncoder to encode.')
+            self.le = LabelEncoder()
+            self.le = self.le.fit(unique_targets)
             
             for idx, file in enumerate(self.labelfiles):
                 print(f'Transforming labelfile {idx + 1}/{len(self.labelfiles)}')
@@ -152,12 +150,12 @@ class DataModule(pl.LightningDataModule):
                 if f'categorical_{self.class_label}' not in labels.columns:
                     labels.loc[:, f'categorical_{self.class_label}'] = labels.loc[:, self.class_label]
 
-                    labels.loc[:, self.class_label] = le.transform(
+                    labels.loc[:, self.class_label] = self.le.transform(
                         labels.loc[:, f'categorical_{self.class_label}']
                     )
 
                     labels.to_csv(file, index=False, sep=self.sep) # Don't need to re-index here 
-
+            
     def setup(self, stage: Optional[str] = None):
         print('Creating train/val/test DataLoaders...')
         trainloader, valloader, testloader = generate_dataloaders(

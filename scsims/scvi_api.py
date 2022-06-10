@@ -23,8 +23,8 @@ class SIMS:
         self.labels_key = labels_key
 
         if verbose: print('Setting up label file for training')
-        labels = pd.DataFrame(an.read_h5ad(adata, backed='r+').obs[labels_key])
-        labels.to_csv(join(here, '_temp_labels.csv'), index=True)
+        self.labels = pd.DataFrame(an.read_h5ad(adata, backed='r+').obs[labels_key])
+        self.labels.to_csv(join(here, '_temp_labels.csv'), index=True)
 
         if verbose: print('Setting up DataModule')
         self.datamodule = DataModule(
@@ -49,6 +49,13 @@ class SIMS:
 
         trainer = pl.Trainer(*args, **kwargs)
         trainer.fit(self.model, datamodule=self.datamodule)
+
+    def predict(self, loader):
+        preds = [self.model(X) for X in loader]
+        
+        return 
+
+
 
 
 

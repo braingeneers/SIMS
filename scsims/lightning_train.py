@@ -127,7 +127,7 @@ class DataModule(pl.LightningDataModule):
             )
 
         self._encode_labels()
-        
+
     def _encode_labels(self):
         unique_targets = np.array(list(
             set(
@@ -139,8 +139,8 @@ class DataModule(pl.LightningDataModule):
         
         if not np.issubdtype(unique_targets.dtype, np.number):
             print('Labels are non-numeric, using sklearn.preprocessing.LabelEncoder to encode.')
-            self.le = LabelEncoder()
-            self.le = self.le.fit(unique_targets)
+            self.label_encoder = LabelEncoder()
+            self.label_encoder = self.label_encoder.fit(unique_targets)
             
             for idx, file in enumerate(self.labelfiles):
                 print(f'Transforming labelfile {idx + 1}/{len(self.labelfiles)}')
@@ -150,7 +150,7 @@ class DataModule(pl.LightningDataModule):
                 if f'categorical_{self.class_label}' not in labels.columns:
                     labels.loc[:, f'categorical_{self.class_label}'] = labels.loc[:, self.class_label]
 
-                    labels.loc[:, self.class_label] = self.le.transform(
+                    labels.loc[:, self.class_label] = self.label_encoder.transform(
                         labels.loc[:, f'categorical_{self.class_label}']
                     )
 

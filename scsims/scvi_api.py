@@ -4,6 +4,7 @@ import anndata as an
 import pytorch_lightning as pl 
 import pathlib 
 
+from tqdm import tqdm 
 from os.path import join 
 from .model import SIMSClassifier
 from .lightning_train import DataModule
@@ -35,6 +36,10 @@ class SIMS:
             **kwargs,
         )
 
+    def setup_data(self):
+        self.datamodule.prepare_data()
+        self.datamodule.setup()
+
     def setup_model(self, *args, **kwargs):
         self.model = SIMSClassifier(
             self.datamodule.input_dim,
@@ -51,9 +56,9 @@ class SIMS:
         trainer.fit(self.model, datamodule=self.datamodule)
 
     def predict(self, loader):
-        preds = [self.model(X) for X in loader]
-        
-        return 
+        return self.datamodule.label_encoder(
+            [self.model(X) for X in tqdm(loader)]
+        )
 
 
 

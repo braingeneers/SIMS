@@ -124,6 +124,10 @@ class TestAnndatasetMatrix(Dataset):
         return (
             self.data.shape[0] if issparse(self.data) else len(self.data) # sparse matrices dont have len :shrug:
         )
+    
+    @property
+    def shape(self):
+        return self.data.shape 
 
 def generate_single_test_loader(
     datafile: str,

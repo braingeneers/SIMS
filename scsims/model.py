@@ -270,6 +270,8 @@ class SIMSClassifier(pl.LightningModule):
             if isinstance(data, tuple): # if we are running this on already labeled pairs and not just for inference
                 X, label = data 
                 labels.extend(label.numpy())        
+            else:
+                X = data 
 
             M_explain, masks = self.network.forward_masks(X)
             for key, value in masks.items():
@@ -279,7 +281,7 @@ class SIMSClassifier(pl.LightningModule):
 
             original_feat_explain = csc_matrix.dot(
                 M_explain.cpu().detach().numpy(),
-                self.reducing_matrix
+                self.reducing_matrix,
             )
 
             res_explain.append(original_feat_explain)

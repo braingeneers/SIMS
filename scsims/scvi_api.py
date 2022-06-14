@@ -3,8 +3,8 @@ import numpy as np
 import anndata as an 
 import pytorch_lightning as pl 
 import pathlib 
+import torch
 
-from tqdm import tqdm 
 from os.path import join 
 from .model import SIMSClassifier
 from .lightning_train import DataModule
@@ -17,28 +17,28 @@ class SIMS:
         adata,
         labels_key,
         verbose=True,
-        *args,
-        **kwargs,
     ) -> None:
         self.adata = adata 
         self.labels_key = labels_key
+        self.verbose = verbose 
 
-        if verbose: print('Setting up label file for training')
-        self.labels = pd.DataFrame(an.read_h5ad(adata, backed='r+').obs[labels_key])
+    def setup_data(self, *args, **kwargs):
+        if self.verbose: print('Setting up label file for training')
+        self.labels = pd.DataFrame(an.read_h5ad(self.adata, backed='r+').obs[self.labels_key])
         self.labels.to_csv(join(here, '_temp_labels.csv'), index=True)
 
-        if verbose: print('Setting up DataModule')
+        if self.verbose: print('Setting up DataModule')
         self.datamodule = DataModule(
-            datafiles=[adata],
+            datafiles=[self.adata],
             labelfiles=[join(here, '_temp_labels.csv')],
-            class_label=labels_key,
+            class_label=self.labels_key,
             *args,
             **kwargs,
         )
 
-    def setup_data(self):
         self.datamodule.prepare_data()
         self.datamodule.setup()
+        self.label_encoder = self.datamodule.label_encoder
 
     def setup_model(self, *args, **kwargs):
         self.model = SIMSClassifier(
@@ -48,20 +48,32 @@ class SIMS:
             **kwargs
         )
 
-    def train(self, *args, **kwargs):
-        if not hasattr(self, 'model'):
-            raise ValueError("Cannot train without initialized model. Run setup_model() before training")
-
-        trainer = pl.Trainer(*args, **kwargs)
-        trainer.fit(self.model, datamodule=self.datamodule)
-
-    def predict(self, loader):
-        return self.datamodule.label_encoder(
-            [self.model(X) for X in tqdm(loader)]
+    def setup_trainer(self, *args, **kwargs):
+        self.trainer = pl.Trainer(
+            *args, 
+            **kwargs,
+            max_epochs=1000,
         )
 
+    def setup(self):
+        self.setup_data()
+        self.setup_model()
+        self.setup_trainer()
 
+    def train(self, *args, **kwargs):
+        if not hasattr(self, 'datamodule'):
+            self.setup_data()
+        if not hasattr(self, 'trainer'):
+            self.setup_trainer()
+        if not hasattr(self, 'model'):
+            self.setup_model()
 
+        self.trainer.fit(self.model, datamodule=self.datamodule)
 
+    def predict(self, loader):
+        results = self.trainer.predict(self.model, loader)
+        results = [torch.argmax(output[0], dim=1) for output in results]
+        
+        return self.label_encoder.inverse_transform(results)
 
 

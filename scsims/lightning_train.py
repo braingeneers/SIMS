@@ -40,6 +40,7 @@ class DataModule(pl.LightningDataModule):
         batch_size=32,
         num_workers=0,
         device=('cuda:0' if torch.cuda.is_available() else None),
+        split=True,
         *args,
         **kwargs,
     ):
@@ -88,6 +89,7 @@ class DataModule(pl.LightningDataModule):
         self.datapath = datapath 
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.split = split 
 
         # If we have a list of urls, we can generate the list of paths of datafiles/labelfiles that will be downloaded after self.prepare_data()
         if self.urls is not None:
@@ -157,23 +159,26 @@ class DataModule(pl.LightningDataModule):
                     labels.to_csv(file, index=False, sep=self.sep) # Don't need to re-index here 
             
     def setup(self, stage: Optional[str] = None):
-        print('Creating train/val/test DataLoaders...')
-        trainloader, valloader, testloader = generate_dataloaders(
-            datafiles=self.datafiles,
-            labelfiles=self.labelfiles,
-            class_label=self.class_label,
-            sep=self.sep,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            pin_memory=True, # For gpu training
-            *self.args,
-            **self.kwargs,
-        )
+        if self.split:
+            print('Creating train/val/test DataLoaders...')
+            trainloader, valloader, testloader = generate_dataloaders(
+                datafiles=self.datafiles,
+                labelfiles=self.labelfiles,
+                class_label=self.class_label,
+                sep=self.sep,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+                pin_memory=True, # For gpu training
+                *self.args,
+                **self.kwargs,
+            )
 
-        print('Done, continuing to training.')
-        self.trainloader = trainloader
-        self.valloader = valloader
-        self.testloader = testloader
+            print('Done, continuing to training.')
+            self.trainloader = trainloader
+            self.valloader = valloader
+            self.testloader = testloader
+        else:
+            pass 
         
         print('Calculating weights')
         self.weights = compute_class_weights(

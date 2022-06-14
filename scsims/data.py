@@ -456,6 +456,7 @@ def generate_single_dataset(
     labelfile: str,
     class_label: str,
     index_col: str,
+    split: bool=True,
     test_prop: float=0.2,
     sep: str=',',
     subset: Collection[int]=None,
@@ -483,14 +484,13 @@ def generate_single_dataset(
     """
 
     suffix = pathlib.Path(datafile).suffix
-
-    if suffix == '.h5ad':
-        if subset is not None:
-            current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[subset, :]
-            current_labels = current_labels.loc[:, class_label]
-        else:
-            current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[:, class_label]
-
+    if subset is not None:
+        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[subset, :]
+        current_labels = current_labels.loc[:, class_label]
+    else:
+        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[:, class_label]
+    
+    if split:
         # Make stratified split on labels
         trainsplit, valsplit = train_test_split(
             current_labels,
@@ -506,18 +506,20 @@ def generate_single_dataset(
             random_state=(42 if deterministic else None)
         )
 
+    if suffix == '.h5ad':
         data = an.read_h5ad(datafile)
         if preprocess:
             # Do the entire minibatch preprocessing on the input data
-            matrix = clean_sample(
+            data = clean_sample(
                 sample=data.X,
                 refgenes=refgenes,
                 currgenes=currgenes,
             )
 
+        if split:
             train, val, test = (
                 AnnDatasetMatrix(
-                    matrix=matrix[split.index],
+                    matrix=(data[split.index] if preprocess else data.X[split.index]), # because if we preprocess data becomes a matrix, not an anndata object
                     labels=split.values,
                     *args,
                     **kwargs,
@@ -525,14 +527,11 @@ def generate_single_dataset(
                 for split in [trainsplit, valsplit, testsplit]
             )
         else:
-            train, val, test = (
-                AnnDatasetMatrix(
-                    matrix=data.X[split.index],
-                    labels=split.values,
-                    *args,
-                    **kwargs,
-                )
-                for split in [trainsplit, valsplit, testsplit]
+            train = AnnDatasetMatrix(
+                matrix=(data if preprocess else data.X),
+                labels=current_labels.values,
+                *args,
+                **kwargs,
             )
     else:
         if preprocess:
@@ -542,38 +541,32 @@ def generate_single_dataset(
             print(f'Extension {suffix} not recognized, \
                 interpreting as .csv. To silence this warning, pass in explicit file types.')
 
-        if subset is not None:
-            current_labels = pd.read_csv(labelfile, sep=sep).loc[subset, class_label]
+        if split:
+            train, val, test = (
+                DelimitedDataset(
+                    filename=datafile,
+                    labelname=labelfile,
+                    class_label=class_label,
+                    indices=indices,
+                    index_col=index_col,
+                    sep=sep,
+                    *args,
+                    **kwargs,
+                )
+                for indices in [trainsplit.index, valsplit.index, testsplit.index]  
+            )
         else:
-            current_labels = pd.read_csv(labelfile, sep=sep).loc[:, class_label]
-
-        # Make stratified split on labels
-        trainsplit, valsplit = train_test_split(
-            current_labels, 
-            stratify=(current_labels if stratify else None), 
-            test_size=test_prop
-        )
-        trainsplit, testsplit = train_test_split(
-            trainsplit, 
-            stratify=(trainsplit if stratify else None), 
-            test_size=test_prop
-        )
-
-        train, val, test = (
-            DelimitedDataset(
-                filename=datafile,
+            train = DelimitedDataset(
                 labelname=labelfile,
                 class_label=class_label,
-                indices=indices,
                 index_col=index_col,
+                indices=subset,
                 sep=sep,
                 *args,
                 **kwargs,
             )
-            for indices in [trainsplit.index, valsplit.index, testsplit.index]  
-        )
 
-    return train, val, test 
+    return (train, val, test) if split else train 
 
 def generate_single_dataloader(
     datafile: str,

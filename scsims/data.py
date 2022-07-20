@@ -364,18 +364,27 @@ def _collate_with_refgenes(
     :return: Two torch.Tensors containing the data and labels, respectively
     :rtype: Tuple[torch.Tensor, torch.Tensor]
     """
+    
+    if len(sample) == 2:
+        data = clean_sample(
+            sample=torch.stack([x[0] for x in sample]),
+            refgenes=refgenes, 
+            currgenes=currgenes,
+        )
 
-    data = clean_sample(
-        sample=torch.stack([x[0] for x in sample]), 
-        refgenes=refgenes, 
-        currgenes=currgenes,
-    )
+        labels = torch.tensor([x[1] for x in sample])
 
-    labels = torch.tensor([x[1] for x in sample])
+        # Add Gaussian noise if noise function isn't specificed, otherwise use tht
+        # Assumes compatability with the data tensor 
+        return _transform_sample(data, normalize, transpose), labels 
+    else: # len == 1
+        data = clean_sample(
+            sample=torch.stack(sample),
+            refgenes=refgenes, 
+            currgenes=currgenes,
+        )
 
-    # Add Gaussian noise if noise function isn't specificed, otherwise use tht
-    # Assumes compatability with the data tensor 
-    return _transform_sample(data, normalize, transpose), labels 
+        return _transform_sample(data, normalize, transpose) 
 
 def _standard_collate(
     sample: List[tuple],
@@ -395,10 +404,13 @@ def _standard_collate(
     :rtype: Tuple[torch.Tensor, torch.Tensor]
     """
 
-    data = torch.stack([x[0] for x in sample])
-    labels = torch.tensor([x[1] for x in sample])
+    if len(sample) == 2:
+        data = torch.stack([x[0] for x in sample])
+        labels = torch.tensor([x[1] for x in sample])
 
-    return _transform_sample(data, normalize, transpose), labels 
+        return _transform_sample(data, normalize, transpose), labels 
+    else: # len == 1
+        return _transform_sample(data, normalize, transpose) 
 
 def _transform_sample(
     data: torch.Tensor, 
@@ -444,6 +456,7 @@ def clean_sample(
     """
     
     indices = np.intersect1d(currgenes, refgenes, return_indices=True)[1]
+    
     if sample.ndim == 2:
         sample = sample[:, indices]
     else:
@@ -508,14 +521,13 @@ def generate_single_dataset(
 
     if suffix == '.h5ad':
         data = an.read_h5ad(datafile)
-        if preprocess:
+        if preprocess and refgenes is not None: 
             # Do the entire minibatch preprocessing on the input data
             data = clean_sample(
                 sample=data.X,
                 refgenes=refgenes,
                 currgenes=currgenes,
             )
-
         if split:
             train, val, test = (
                 AnnDatasetMatrix(
@@ -700,6 +712,8 @@ def generate_dataloaders(
     stratify=True,
     batch_size: int=4,
     num_workers: int=0,
+    refgenes: Collection=None,
+    currgenes: Collection=None,
     *args,
     **kwargs,
 ) -> Union[Tuple[CollateLoader, List[CollateLoader]], Tuple[SequentialLoader]]:
@@ -736,6 +750,8 @@ def generate_dataloaders(
             stratify=stratify,
             batch_size=batch_size,
             num_workers=num_workers,
+            currgenes=currgenes,
+            refgenes=refgenes,
             *args,
             **kwargs,
         )

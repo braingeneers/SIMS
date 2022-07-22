@@ -365,7 +365,7 @@ def _collate_with_refgenes(
     :rtype: Tuple[torch.Tensor, torch.Tensor]
     """
     
-    if len(sample) == 2:
+    if len(sample[0]) == 2:
         data = clean_sample(
             sample=torch.stack([x[0] for x in sample]),
             refgenes=refgenes, 
@@ -404,13 +404,14 @@ def _standard_collate(
     :rtype: Tuple[torch.Tensor, torch.Tensor]
     """
 
-    if len(sample) == 2:
+    
+    if len(sample[0]) == 2:
         data = torch.stack([x[0] for x in sample])
         labels = torch.tensor([x[1] for x in sample])
 
         return _transform_sample(data, normalize, transpose), labels 
     else: # len == 1
-        return _transform_sample(data, normalize, transpose) 
+        return _transform_sample(torch.stack(sample), normalize, transpose) 
 
 def _transform_sample(
     data: torch.Tensor, 

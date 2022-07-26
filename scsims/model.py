@@ -424,9 +424,9 @@ class SIMSClassifier(pl.LightningModule):
             else:
                 data = X 
 
-        res, _ = self.network(data)
-        res = np.argmax(res.detach(), axis=1)
-        preds.extend(res.numpy())
+            res, _ = self.network(data)
+            res = np.argmax(res.detach(), axis=1)
+            preds.extend(res.numpy())
 
         final = pd.DataFrame()
         final['predicted_label'] = preds

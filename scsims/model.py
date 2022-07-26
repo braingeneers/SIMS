@@ -4,7 +4,9 @@ import zipfile
 import io 
 import copy
 import warnings
+import numpy as np 
 from pathlib import Path 
+import pandas as pd 
 from typing import (
     Dict, 
     Callable,
@@ -410,6 +412,28 @@ class SIMSClassifier(pl.LightningModule):
                         exec(f"self.{var_name} = value")
                 except AttributeError:
                     exec(f"self.{var_name} = value")
+
+    def predict(self, loader):
+        preds = []
+        labels = []
+        for X in tqdm(loader):
+            # Some dataloaders will have labels, handle this case 
+            if len(X) == 2:
+                data, label = X 
+                labels.extend(label.numpy())
+            else:
+                data = X 
+
+        res, _ = self.network(data)
+        res = np.argmax(res.detach(), axis=1)
+        preds.extend(res.numpy())
+
+        final = pd.DataFrame()
+        final['predicted_label'] = preds
+
+        if labels != []: final['actual_label'] = labels 
+
+        return final 
 
 def confusion_matrix(model, dataloader, num_classes):
     confusion_matrix = torch.zeros(num_classes, num_classes)

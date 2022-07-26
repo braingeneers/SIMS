@@ -221,12 +221,14 @@ class AnnDatasetMatrix(Dataset):
     def __init__(self,
         matrix: np.ndarray,
         labels: List[any],
+        split: Collection[int]=None,
         *args,
         **kwargs,
     ) -> None:
         super().__init__()
         self.data = matrix
         self.labels = labels 
+        self.split = split 
         
     def __getitem__(self, idx):
         if isinstance(idx, slice):
@@ -534,6 +536,7 @@ def generate_single_dataset(
                 AnnDatasetMatrix(
                     matrix=(data[split.index] if preprocess else data.X[split.index]), # because if we preprocess data becomes a matrix, not an anndata object
                     labels=split.values,
+                    split=split.index,
                     *args,
                     **kwargs,
                 )

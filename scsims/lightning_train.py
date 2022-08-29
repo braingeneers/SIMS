@@ -102,7 +102,7 @@ class DataModule(pl.LightningDataModule):
         # Warn user in case tsv/csv ,/\t don't match, this can be annoying to diagnose
         suffix = pathlib.Path(self.labelfiles[0]).suffix
         if (sep == '\t' and suffix == 'csv') or (sep == ',' and suffix == '.tsv'):
-            warnings.warn(f'Passed delimiter {sep = } doesn\'t match file extension, continuing...')
+            warnings.warn(f'Passed delimiter sep={sep} doesn\'t match file extension, continuing...')
 
         # Infer sep based on .csv/.tsv of labelfile (assumed to be homogeneous in case of delimited datafiles) if sep is not passed
         if sep is None:
@@ -111,7 +111,7 @@ class DataModule(pl.LightningDataModule):
             elif suffix == '.csv':
                 self.sep = ','
             else:
-                warnings.warn(f'Separator not passed and not able to be inferred from {suffix=}. Falling back to ","')
+                warnings.warn(f'Separator not passed and not able to be inferred from suffix={suffix}. Falling back to ","')
                 self.sep = ','
         else:
             self.sep = sep 

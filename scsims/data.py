@@ -739,7 +739,7 @@ def generate_dataloaders(
         raise ValueError("Must have same number of datafiles and labelfiles")
     
     if not collocate and len(datafiles) > 1:
-        warnings.warn(f"{collocate =}, so multiple files will return multiple DataLoaders and cannot be trained sequentially with PyTorch-Lightning")
+        warnings.warn(f"collocate={collocate}, so multiple files will return multiple DataLoaders and cannot be trained sequentially with PyTorch-Lightning")
 
     train, val, test = [], [], []
     for datafile, labelfile in zip(datafiles, labelfiles):

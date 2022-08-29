@@ -154,17 +154,6 @@ class SIMSClassifier(pl.LightningModule):
                 logger=True,
             )
 
-    def _step(self, batch):
-        x, y = batch
-        y_hat, M_loss = self.network(x)
-
-        loss = self._compute_loss(y_hat, y)
-
-        # Add the overall sparsity loss
-        loss = loss - self.lambda_sparse * M_loss
-        return y, y_hat, loss
-
-
     def _step(self, batch, tag):
         x, y = batch
         y_hat, M_loss = self.network(x)

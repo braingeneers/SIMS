@@ -177,7 +177,7 @@ class AnnDatasetFile(Dataset):
 
         # If labelfile is passed, then we need an associated column to pull the class_label from 
         if labelfile is not None and class_label is None:
-            raise ValueError(f"If labelfile is passed, column to corresponding class must be passed in class_label. Got {class_label = }.")
+            raise ValueError("If labelfile is passed, column to corresponding class must be passed in class_label.")
 
         if columns is None:
             warnings.warn(f"{self.__class__.__name__} initialized without columns. This will error if training with multiple Datasets with potentially different columns.")

@@ -6,7 +6,7 @@ exec:
 
 build:
 	docker build -t $(CONTAINER) .
-
+	
 push:
 	docker push $(CONTAINER)
 

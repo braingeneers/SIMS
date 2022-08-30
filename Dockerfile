@@ -16,6 +16,11 @@ RUN curl -L https://bit.ly/glances | /bin/bash
 RUN conda install --yes boto3 tenacity pandas numpy pip plotly scipy && \
     conda install -c conda-forge python-kaleido 
 
+RUN conda update conda
+RUN conda install python=3.8
+RUN conda install anaconda-client
+RUN conda update anaconda
+
 RUN pip install matplotlib 
 RUN pip install seaborn 
 RUN pip install pytorch-lightning 

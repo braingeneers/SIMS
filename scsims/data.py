@@ -3,7 +3,7 @@ import inspect
 import warnings 
 import pathlib
 
-from functools import cached_property, partial
+from functools import partial
 from itertools import chain 
 from typing import *
 
@@ -117,11 +117,9 @@ class DelimitedDataset(Dataset):
     def __len__(self):
         return len(self._labeldf) # number of total samples 
 
-    @cached_property
     def columns(self): # Just an alias...
         return self.features
 
-    @cached_property # Worth caching, since this is a list comprehension on up to 50k strings. Annoying. 
     def features(self):
         if self._cols is not None:
             return self._cols 
@@ -138,7 +136,6 @@ class DelimitedDataset(Dataset):
     def shape(self):
         return (self.__len__(), len(self.features))
     
-    @cached_property 
     def class_weights(self):
         labels = self._labeldf.loc[:, self.class_label].values
 

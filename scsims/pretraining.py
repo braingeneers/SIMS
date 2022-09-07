@@ -76,7 +76,7 @@ def UnsupervisedLoss(y_pred, embedded_x, obf_vars, eps=1e-9):
 
 
 def UnsupervisedLossNumpy(y_pred, embedded_x, obf_vars, eps=1e-9):
-    """Compute Euclidean distance between reconstructed and original vector 
+    """Compute Euclidean distance between reconstructed and original vector
 
     :param y_pred: _description_
     :type y_pred: _type_
@@ -234,9 +234,9 @@ def pretrain_model(
     """
     Pretrain model via random masking or denoising
 
-    :param datamodule: Datamodule to train model on 
+    :param datamodule: Datamodule to train model on
     :type datamodule: pl.DataModule
-    :param model: Model to train on 
+    :param model: Model to train on
     :type model: Model
     :param trainer: PyTorch Lightning trainer used to train model
     :type trainer: pl.LightningTrainer

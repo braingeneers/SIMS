@@ -3,7 +3,7 @@
 """The setup script."""
 
 from setuptools import setup, find_packages
-import pathlib 
+import pathlib
 
 requirements = [
     "pandas",

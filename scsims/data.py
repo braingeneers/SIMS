@@ -35,11 +35,11 @@ class DelimitedDataset(Dataset):
         """
         Initialization method for DelimitedDataset.
 
-        The filename contains a delimited text file where ROWS are cells and the COLUMNS are the genes measured. The labelname is a delimited text file 
-        containing the class_label column, and optionally an index_col. 
+        The filename contains a delimited text file where ROWS are cells and the COLUMNS are the genes measured. The labelname is a delimited text file
+        containing the class_label column, and optionally an index_col.
 
         Since dropping rows we don't want to train on is nontrivial in the case of the csv, since the csv would have to be read into memory and modified (often this is not computationaly feasible),
-        we instead just drop the rows in the labelname file. Then the index_col column specifies the actual row numbers of the samples we want. Equivalently, the index_col is the numeric equivalent to 
+        we instead just drop the rows in the labelname file. Then the index_col column specifies the actual row numbers of the samples we want. Equivalently, the index_col is the numeric equivalent to
         the labelname index after dropping the unwanted rows.
 
         For this reason, index_col must be purely numeric, as the i-th entry of labelfile.loc[:, index_col] contains the actual line number of the i-th sample in the data file.
@@ -81,9 +81,9 @@ class DelimitedDataset(Dataset):
     def __getitem__(self, idx: int):
         """Get sample at index
 
-        :param idx: Numerical index between 0, len(self) -1 
+        :param idx: Numerical index between 0, len(self) -1
         :type idx: int
-        :raises ValueError: Errors in the case of unbounded slicing, which is normally supported in this method 
+        :raises ValueError: Errors in the case of unbounded slicing, which is normally supported in this method
         :return: Returns a data, label sample
         :rtype: Tuple[torch.Tensor, Any]
         """
@@ -341,7 +341,7 @@ class SequentialLoader:
     """
     Class to sequentially stream samples from an arbitrary number of DataLoaders.
 
-    :param dataloaders: List of DataLoaders or DataLoader derived class, such as the CollateLoader from above 
+    :param dataloaders: List of DataLoaders or DataLoader derived class, such as the CollateLoader from above
     :type dataloaders: List[Union[DataLoader, SequentialLoader]]
     """
 
@@ -369,7 +369,7 @@ def _collate_with_refgenes(
     :type sample: List[tuple]
     :param refgenes: List of reference genes
     :type refgenes: List[str]
-    :param currgenes: List of current columns from sample 
+    :param currgenes: List of current columns from sample
     :type currgenes: List[str]
     :param transpose: boolean, indicates if we should transpose the minibatch (in the case of incorrectly formatted .csv data)
     :type transpose: bool
@@ -407,7 +407,7 @@ def _standard_collate(
     transpose: bool,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Collate minibatch of samples, optionally normalizing and transposing. 
+    Collate minibatch of samples, optionally normalizing and transposing.
 
     :param sample: List of DelimitedDataset items to collate
     :type sample: List[tuple]
@@ -438,11 +438,11 @@ def _transform_sample(
 
     :param data: Input sample
     :type data: torch.Tensor
-    :param normalize: To normalize sample or not 
+    :param normalize: To normalize sample or not
     :type normalize: bool
-    :param transpose: to transpose sample or not 
+    :param transpose: to transpose sample or not
     :type transpose: bool
-    :return: Modified sample 
+    :return: Modified sample
     :rtype: torch.Tensor
     """
     if transpose:
@@ -504,9 +504,9 @@ def generate_single_dataset(
 
     :param datafile: Path to dataset csv file
     :type datafile: str
-    :param labelfile: Path to label csv file 
+    :param labelfile: Path to label csv file
     :type labelfile: str
-    :param class_label: Column (label) in labelfile to train on 
+    :param class_label: Column (label) in labelfile to train on
     :type class_label: str
     :param test_prop: Proportion of dataset to use in val/test, defaults to 0.2
     :type test_prop: float, optional
@@ -671,14 +671,14 @@ def generate_datasets(
     **kwargs,
 ) -> Tuple[Dataset, Dataset]:
     """
-    Generates the COMBINED train/val/test datasets with stratified label splitting. 
-    This means that the proportion of each label is the same in the training, validation and test set. 
+    Generates the COMBINED train/val/test datasets with stratified label splitting.
+    This means that the proportion of each label is the same in the training, validation and test set.
 
     :param datafiles: List of absolute paths to csv files under data_path/ that define cell x expression matrices
     :type datafiles: List[str]
     :param labelfiles: ist of absolute paths to csv files under data_path/ that define cell x class matrices
     :type labelfiles: List[str]
-    :param class_label: Column in label files to train on. Must exist in all datasets, this should throw a natural error if it does not. 
+    :param class_label: Column in label files to train on. Must exist in all datasets, this should throw a natural error if it does not.
     :type class_label: str
     :param test_prop: Proportion of data to use as test set , defaults to 0.2
     :type test_prop: float, optional
@@ -755,8 +755,8 @@ def generate_dataloaders(
     :param collocate: Whether to combine DataLoaders into one SequentialLoader to allow sequential sampling from all continuously, defaults to True
     :type collocate: bool, optional
     :raises ValueError: Errors if num(labelfiles) != num(datafiles)
-    :raises ValueError: Errors if user requests to collocate but only one loader is passed -- probably misinformed 
-    :return: Either lists containing train, val, test or SequentialLoader's for train, val, test 
+    :raises ValueError: Errors if user requests to collocate but only one loader is passed -- probably misinformed
+    :return: Either lists containing train, val, test or SequentialLoader's for train, val, test
     :rtype: Union[Tuple[List[CollateLoader], List[CollateLoader], List[CollateLoader]], Tuple[SequentialLoader, SequentialLoader, SequentialLoader]]
     """
     if len(datafiles) != len(labelfiles):
@@ -809,11 +809,11 @@ def compute_class_weights(
     device: str = None,
 ) -> torch.Tensor:
     """
-    Compute class weights for the entire label set 
+    Compute class weights for the entire label set
 
     :param labelfiles: List of absolute paths to label files
     :type labelfiles: List[str]
-    :param class_label: Target label to calculate weight distribution on 
+    :param class_label: Target label to calculate weight distribution on
     :type class_label: str
     :return: Tensor of class weights for model training
     :rtype: torch.Tensor

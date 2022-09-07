@@ -1,6 +1,7 @@
 import pkg_resources
 import prettytable
 
+
 def get_pkg_license(pkg):
     try:
         lines = pkg.get_metadata_lines('METADATA')
@@ -12,6 +13,7 @@ def get_pkg_license(pkg):
             return line[9:]
     return '(Licence not found)'
 
+
 def print_packages_and_licenses():
     t = prettytable.PrettyTable(['Package', 'License'])
     for pkg in sorted(pkg_resources.working_set, key=lambda x: str(x).lower()):
@@ -20,4 +22,4 @@ def print_packages_and_licenses():
 
 
 if __name__ == "__main__":
-    print_packages_and_licenses() 
+    print_packages_and_licenses()

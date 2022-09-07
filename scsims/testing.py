@@ -5,33 +5,34 @@ from typing import (
     Collection,
 )
 from functools import cached_property
-import pathlib 
+import pathlib
 
-import pandas as pd 
+import pandas as pd
 import torch
 import numpy as np
 import torch
-import scanpy as sc 
+import scanpy as sc
 import anndata as an
 
 from torch.utils.data import Dataset, DataLoader
 from scipy.sparse import issparse
-import pytorch_lightning as pl 
+import pytorch_lightning as pl
 
 from .data import *
 
+
 class TestDelimitedData(Dataset):
     def __init__(
-        self, 
+        self,
         datafile: str,
-        indexfile: str=None,
-        index_col: str=None,
+        indexfile: str = None,
+        index_col: str = None,
         skip=3,
         cast=True,
         sep=',',
-        columns: List[Any]=None,
+        columns: List[Any] = None,
         *args,
-        **kwargs, # To handle extraneous inputs
+        **kwargs,  # To handle extraneous inputs
     ):
         self.datafile = datafile
         self.skip = skip
@@ -40,7 +41,8 @@ class TestDelimitedData(Dataset):
         self._cols = columns
 
         if indexfile is not None:
-            self.index_df = pd.read_csv(indexfile, index_col=index_col).reset_index()
+            self.index_df = pd.read_csv(
+                indexfile, index_col=index_col).reset_index()
 
     def __getitem__(self, idx: int):
         """Get sample at index
@@ -50,8 +52,8 @@ class TestDelimitedData(Dataset):
         :raises ValueError: Errors in the case of unbounded slicing, which is normally supported in this method 
         :return: Returns a data, label sample
         :rtype: Tuple[torch.Tensor, Any]
-        """        
-        # Handle slicing 
+        """
+        # Handle slicing
         if isinstance(idx, slice):
             if idx.start is None or idx.stop is None:
                 raise ValueError(
@@ -64,48 +66,53 @@ class TestDelimitedData(Dataset):
 
         # The actual line in the datafile to get, corresponding to the number in the self.index_col values, otherwise the line at index "idx"
         data_index = (
-            self._labeldf.loc[idx, self.index_col] if self.index_col is not None else idx
+            self._labeldf.loc[idx,
+                              self.index_col] if self.index_col is not None else idx
         )
 
         # get gene expression for current cell from csv file
-        # We skip some lines because we're reading directly from 
+        # We skip some lines because we're reading directly from
         line = linecache.getline(self.datafile, data_index + self.skip)
-        
+
         if self.cast:
-            data = torch.from_numpy(np.array(line.split(self.sep), dtype=np.float32)).float()
+            data = torch.from_numpy(
+                np.array(line.split(self.sep), dtype=np.float32)).float()
         else:
             data = np.array(line.split(self.sep))
 
-        return data 
+        return data
 
     def __len__(self):
-        return len(self._labeldf) # number of total samples 
+        return len(self._labeldf)  # number of total samples
 
     @cached_property
-    def columns(self): # Just an alias...
+    def columns(self):  # Just an alias...
         return self.features
 
-    @cached_property # Worth caching, since this is a list comprehension on up to 50k strings. Annoying. 
+    # Worth caching, since this is a list comprehension on up to 50k strings. Annoying.
+    @cached_property
     def features(self):
         if self._cols is not None:
-            return self._cols 
+            return self._cols
         else:
             data = linecache.getline(self.datafile, self.skip - 1)
-            data = [x.split('|')[0].upper().strip() for x in data.split(self.sep)]
+            data = [x.split('|')[0].upper().strip()
+                    for x in data.split(self.sep)]
             return data
 
     @property
     def shape(self):
         return (self.__len__(), len(self.features))
-    
+
+
 class TestAnndatasetMatrix(Dataset):
     def __init__(self,
-        matrix: np.ndarray,
-        indices: Collection[int]=None,
-    ) -> None:
+                 matrix: np.ndarray,
+                 indices: Collection[int] = None,
+                 ) -> None:
         super().__init__()
         self.data = (matrix if indices is None else matrix[indices, :])
-        
+
     def __getitem__(self, idx):
         if isinstance(idx, slice):
             step = (1 if idx.step is None else idx.step)
@@ -116,22 +123,25 @@ class TestAnndatasetMatrix(Dataset):
 
         if issparse(data):
             data = data.todense()
-            data = np.squeeze(np.asarray(data)) # Need to get first row of 1xp matrix, weirdly this is how to do it :shrug:
+            # Need to get first row of 1xp matrix, weirdly this is how to do it :shrug:
+            data = np.squeeze(np.asarray(data))
 
         return torch.from_numpy(data)
-    
+
     def __len__(self):
         return (
-            self.data.shape[0] if issparse(self.data) else len(self.data) # sparse matrices dont have len :shrug:
+            # sparse matrices dont have len :shrug:
+            self.data.shape[0] if issparse(self.data) else len(self.data)
         )
-    
+
     @property
     def shape(self):
-        return self.data.shape 
+        return self.data.shape
+
 
 def generate_single_test_loader(
     datafile: str,
-    sep: str=',',
+    sep: str = ',',
     *args,
     **kwargs,
 ):
@@ -148,6 +158,7 @@ def generate_single_test_loader(
         **kwargs
     )
 
+
 def generate_test_loaders(
     datafiles: List[str],
     labelfiles: List[str],
@@ -157,7 +168,7 @@ def generate_test_loaders(
     *args,
     **kwargs
 ) -> SequentialLoader:
-    
+
     loaders = []
     for datafile, labelfile in zip(datafiles, labelfiles):
         dataset = generate_single_test_dataset(
@@ -180,12 +191,13 @@ def generate_test_loaders(
 
     return SequentialLoader(loaders)
 
+
 def generate_single_test_dataset(
     datafile: str,
     labelfile: str,
     class_label: str,
     index_col: str,
-    sep: str=',',
+    sep: str = ',',
     *args,
     **kwargs,
 ) -> Union[TestDelimitedData, TestAnndatasetMatrix]:
@@ -203,7 +215,7 @@ def generate_single_test_dataset(
     :rtype: Tuple[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]
     """
 
-    suffix = pathlib.Path(datafile).suffix 
+    suffix = pathlib.Path(datafile).suffix
 
     if suffix == '.h5ad':
         data = sc.read_h5ad(datafile)
@@ -214,13 +226,14 @@ def generate_single_test_dataset(
         )
     else:
         if suffix != '.csv' and suffix != '.tsv':
-            print(f'Extension {suffix} not recognized, interpreting as .csv. To silence this warning, pass in explicit file types.')
+            print(
+                f'Extension {suffix} not recognized, interpreting as .csv. To silence this warning, pass in explicit file types.')
 
         dataset = TestDelimitedData(
-                filename=datafile,
-                sep=sep,
-                *args,
-                **kwargs,
-            )
+            filename=datafile,
+            sep=sep,
+            *args,
+            **kwargs,
+        )
 
     return dataset

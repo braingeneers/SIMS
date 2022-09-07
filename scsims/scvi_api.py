@@ -1,15 +1,16 @@
 import pandas as pd
-import numpy as np 
-import anndata as an 
-import pytorch_lightning as pl 
-import pathlib 
+import numpy as np
+import anndata as an
+import pytorch_lightning as pl
+import pathlib
 import torch
 
-from os.path import join 
+from os.path import join
 from .model import SIMSClassifier
 from .lightning_train import DataModule
 
 here = pathlib.Path(__file__).parent.absolute()
+
 
 class SIMS:
     def __init__(
@@ -18,16 +19,19 @@ class SIMS:
         labels_key,
         verbose=True,
     ) -> None:
-        self.adata = adata 
+        self.adata = adata
         self.labels_key = labels_key
-        self.verbose = verbose 
+        self.verbose = verbose
 
     def setup_data(self, *args, **kwargs):
-        if self.verbose: print('Setting up label file for training')
-        self.labels = pd.DataFrame(an.read_h5ad(self.adata, backed='r+').obs[self.labels_key])
+        if self.verbose:
+            print('Setting up label file for training')
+        self.labels = pd.DataFrame(an.read_h5ad(
+            self.adata, backed='r+').obs[self.labels_key])
         self.labels.to_csv(join(here, '_temp_labels.csv'), index=True)
 
-        if self.verbose: print('Setting up DataModule')
+        if self.verbose:
+            print('Setting up DataModule')
         self.datamodule = DataModule(
             datafiles=[self.adata],
             labelfiles=[join(here, '_temp_labels.csv')],
@@ -44,13 +48,13 @@ class SIMS:
         self.model = SIMSClassifier(
             self.datamodule.input_dim,
             self.datamodule.output_dim,
-            *args, 
+            *args,
             **kwargs
         )
 
     def setup_trainer(self, *args, **kwargs):
         self.trainer = pl.Trainer(
-            *args, 
+            *args,
             **kwargs,
             max_epochs=1000,
         )
@@ -73,7 +77,5 @@ class SIMS:
     def predict(self, loader):
         results = self.trainer.predict(self.model, loader)
         results = [torch.argmax(output[0], dim=1) for output in results]
-        
+
         return self.label_encoder.inverse_transform(results)
-
-

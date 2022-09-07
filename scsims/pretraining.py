@@ -1,25 +1,27 @@
 from typing import *
 
-import pandas as pd 
+import pandas as pd
 import torch
 import numpy as np
 
-import pytorch_lightning as pl 
+import pytorch_lightning as pl
 from pytorch_tabnet.tab_network import (
-    EmbeddingGenerator, 
-    RandomObfuscator, 
-    TabNetEncoder, 
+    EmbeddingGenerator,
+    RandomObfuscator,
+    TabNetEncoder,
     TabNetDecoder,
 )
 
-import sys, os 
+import sys
+import os
 # ALL THIS IS FLATTENING THE API FROM https://github.com/dreamquark-ai/tabnet
-# GIVE MASSIVE CREDIT 
+# GIVE MASSIVE CREDIT
+
 
 class NoiseObfuscator(torch.nn.Module):
     def __init__(
         self,
-        variance: float=1,
+        variance: float = 1,
     ) -> None:
         """
         Custom dataset interiting from parent Dataset that adds Gaussian noise with a given variance to each sample, to be used for pretraining
@@ -32,6 +34,7 @@ class NoiseObfuscator(torch.nn.Module):
 
     def forward(self, x):
         return x + self.variance*torch.randn_like(x)
+
 
 def UnsupervisedLoss(y_pred, embedded_x, obf_vars, eps=1e-9):
     """
@@ -71,6 +74,7 @@ def UnsupervisedLoss(y_pred, embedded_x, obf_vars, eps=1e-9):
     loss = torch.mean(features_loss)
     return loss
 
+
 def UnsupervisedLossNumpy(y_pred, embedded_x, obf_vars, eps=1e-9):
     """Compute Euclidean distance between reconstructed and original vector 
 
@@ -84,7 +88,7 @@ def UnsupervisedLossNumpy(y_pred, embedded_x, obf_vars, eps=1e-9):
     :type eps: _type_, optional
     :return: _description_
     :rtype: _type_
-    """    
+    """
     errors = y_pred - embedded_x
     reconstruction_errors = np.multiply(errors, obf_vars) ** 2
     batch_means = np.mean(embedded_x, axis=0)
@@ -100,6 +104,7 @@ def UnsupervisedLossNumpy(y_pred, embedded_x, obf_vars, eps=1e-9):
     # here we take the mean per batch, contrary to the paper
     loss = np.mean(features_loss)
     return loss
+
 
 class TabNetPretraining(pl.LightningModule):
     def __init__(
@@ -147,7 +152,8 @@ class TabNetPretraining(pl.LightningModule):
             raise ValueError("n_shared and n_independent can't be both zero.")
 
         self.virtual_batch_size = virtual_batch_size
-        self.embedder = EmbeddingGenerator(input_dim, cat_dims, cat_idxs, cat_emb_dim)
+        self.embedder = EmbeddingGenerator(
+            input_dim, cat_dims, cat_idxs, cat_emb_dim)
         self.post_embed_dim = self.embedder.post_embed_dim
 
         self.masker = RandomObfuscator(self.pretraining_ratio)
@@ -202,22 +208,23 @@ class TabNetPretraining(pl.LightningModule):
 
         return loss
 
-    def _compute_metrics(self, 
-        y_hat: torch.Tensor, 
-        y: torch.Tensor, 
-        tag: str,
-        on_epoch=True, 
-        on_step=False,
-    ):
+    def _compute_metrics(self,
+                         y_hat: torch.Tensor,
+                         y: torch.Tensor,
+                         tag: str,
+                         on_epoch=True,
+                         on_step=False,
+                         ):
         val = metric(y_hat, y, average='weighted', num_classes=self.output_dim)
 
         self.log(
-            f"Reconstuction loss", 
-            val, 
-            on_epoch=on_epoch, 
+            f"Reconstuction loss",
+            val,
+            on_epoch=on_epoch,
             on_step=on_step,
             logger=True,
         )
+
 
 def pretrain_model(
     datamodule,
@@ -235,4 +242,4 @@ def pretrain_model(
     :type trainer: pl.LightningTrainer
     """
 
-    pass 
+    pass

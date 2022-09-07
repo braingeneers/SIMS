@@ -1,23 +1,23 @@
-import shutil 
-import json 
-import zipfile 
-import io 
+import shutil
+import json
+import zipfile
+import io
 import copy
 import warnings
-import numpy as np 
-from pathlib import Path 
-import pandas as pd 
+import numpy as np
+from pathlib import Path
+import pandas as pd
 from typing import (
-    Dict, 
+    Dict,
     Callable,
 )
 from functools import partial
 
-import torch 
-import numpy as np 
-import torchmetrics 
-import pytorch_lightning as pl 
-from scipy.sparse import csc_matrix 
+import torch
+import numpy as np
+import torchmetrics
+import pytorch_lightning as pl
+from scipy.sparse import csc_matrix
 from pytorch_tabnet.utils import (
     create_explain_matrix,
     ComplexEncoder,
@@ -25,7 +25,7 @@ from pytorch_tabnet.utils import (
 import torch.nn.functional as F
 from pytorch_tabnet.tab_network import TabNet
 from torchmetrics.functional.classification.stat_scores import _stat_scores_update
-from tqdm import tqdm 
+from tqdm import tqdm
 from torchmetrics.functional import (
     precision,
     recall,
@@ -34,6 +34,7 @@ from torchmetrics.functional import (
     specificity,
     auroc,
 )
+
 
 class SIMSClassifier(pl.LightningModule):
     def __init__(
@@ -53,14 +54,14 @@ class SIMSClassifier(pl.LightningModule):
         virtual_batch_size=128,
         momentum=0.02,
         mask_type="sparsemax",
-        lambda_sparse = 1e-3,
-        optim_params: Dict[str, float]=None,
-        metrics: Dict[str, Callable]=None,
-        scheduler_params: Dict[str, float]=None,
-        weights: torch.Tensor=None,
-        loss: Callable=None, # will default to cross_entropy
-        pretrained: bool=None,
-        no_explain: bool=False,
+        lambda_sparse=1e-3,
+        optim_params: Dict[str, float] = None,
+        metrics: Dict[str, Callable] = None,
+        scheduler_params: Dict[str, float] = None,
+        weights: torch.Tensor = None,
+        loss: Callable = None,  # will default to cross_entropy
+        pretrained: bool = None,
+        no_explain: bool = False,
     ) -> None:
         super().__init__()
 
@@ -70,9 +71,9 @@ class SIMSClassifier(pl.LightningModule):
         self.lambda_sparse = lambda_sparse
 
         self.optim_params = optim_params
-        
-        self.weights = weights 
-        self.loss = loss 
+
+        self.weights = weights
+        self.loss = loss
 
         if pretrained is not None:
             self._from_pretrained(**pretrained.get_params())
@@ -80,7 +81,7 @@ class SIMSClassifier(pl.LightningModule):
         if metrics is None:
             self.metrics = aggregate_metrics(num_classes=self.output_dim)
         else:
-            self.metrics = metrics 
+            self.metrics = metrics
 
         if optim_params is None:
             self.optim_params = {
@@ -92,17 +93,17 @@ class SIMSClassifier(pl.LightningModule):
             self.optim_params = optim_params
 
         if scheduler_params is None:
-            self.scheduler_params={
+            self.scheduler_params = {
                 'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
-                'factor': 0.75, # Reduce LR by 25% on plateau
+                'factor': 0.75,  # Reduce LR by 25% on plateau
             }
         else:
             self.scheduler_params = scheduler_params
 
         print(f'Initializing network')
         self.network = TabNet(
-            input_dim=input_dim, 
-            output_dim=output_dim, 
+            input_dim=input_dim,
+            output_dim=output_dim,
             n_d=n_d,
             n_a=n_a,
             n_steps=n_steps,
@@ -133,23 +134,23 @@ class SIMSClassifier(pl.LightningModule):
     def _compute_loss(self, y, y_hat):
         # If user doesn't specify, just set to cross_entropy
         if self.loss is None:
-            self.loss = F.cross_entropy 
+            self.loss = F.cross_entropy
 
         return self.loss(y, y_hat, weight=self.weights)
 
-    def _compute_metrics(self, 
-        y_hat: torch.Tensor, 
-        y: torch.Tensor, 
-        tag: str,
-        on_epoch=True, 
-        on_step=True,
-    ):
+    def _compute_metrics(self,
+                         y_hat: torch.Tensor,
+                         y: torch.Tensor,
+                         tag: str,
+                         on_epoch=True,
+                         on_step=True,
+                         ):
         for name, metric in self.metrics.items():
             val = metric(y_hat, y)
             self.log(
-                f"{tag}_{name}", 
-                val, 
-                on_epoch=on_epoch, 
+                f"{tag}_{name}",
+                val,
+                on_epoch=on_epoch,
                 on_step=on_step,
                 logger=True,
             )
@@ -164,7 +165,7 @@ class SIMSClassifier(pl.LightningModule):
 
         self.log(f"{tag}_loss", loss, logger=True, on_epoch=True, on_step=True)
         self._compute_metrics(y_hat, y, tag)
-        
+
         tp, fp, _, fn = _stat_scores_update(
             preds=y_hat,
             target=y,
@@ -188,53 +189,54 @@ class SIMSClassifier(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         return self._step(batch, 'test')
-    
+
     def _epoch_end(self, step_outputs, tag):
         tps, fps, fns = [], [], []
-        
+
         for i in range(len(step_outputs)):
             res = step_outputs[i]
             tp, fp, fn = res['tp'], res['fp'], res['fn']
-                
+
             tps.append(tp.cpu().numpy())
             fps.append(fp.cpu().numpy())
             fns.append(fn.cpu().numpy())
-            
+
         tp = np.sum(np.array(tps), axis=0)
         fp = np.sum(np.array(fps), axis=0)
         fn = np.sum(np.array(fns), axis=0)
-        
+
         precision = tp / (tp + fp)
         recall = tp / (tp + fn)
         f1s = 2*(precision * recall) / (precision + recall)
         f1s = np.nan_to_num(f1s)
 
         self.log(
-            f"{tag}_median_f1", 
-            np.nanmedian(f1s), 
-            logger=True, 
-            on_step=False, 
+            f"{tag}_median_f1",
+            np.nanmedian(f1s),
+            logger=True,
+            on_step=False,
             on_epoch=True
         )
 
-        return f1s 
+        return f1s
 
     # Calculation on epoch end, for "median F1 score"
     def training_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs,'train')
-        
+        self._epoch_end(step_outputs, 'train')
+
     def validation_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs, 'val') 
-    
+        self._epoch_end(step_outputs, 'val')
+
     def test_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs, 'test') 
+        self._epoch_end(step_outputs, 'test')
 
     def configure_optimizers(self):
         if 'optimizer' in self.optim_params:
             optimizer = self.optim_params.pop('optimizer')
             optimizer = optimizer(self.parameters(), **self.optim_params)
         else:
-            optimizer = torch.optim.Adam(self.parameters(), lr=0.2, weight_decay=1e-5)
+            optimizer = torch.optim.Adam(
+                self.parameters(), lr=0.2, weight_decay=1e-5)
 
         if self.scheduler_params is not None:
             scheduler = self.scheduler_params.pop('scheduler')
@@ -242,7 +244,7 @@ class SIMSClassifier(pl.LightningModule):
 
         if self.scheduler_params is None:
             return optimizer
-        
+
         return {
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
@@ -251,18 +253,19 @@ class SIMSClassifier(pl.LightningModule):
 
     def explain(self, loader, cache=False, normalize=False):
         if cache and self._explain_matrix is not None:
-            return self._explain_matrix 
-            
+            return self._explain_matrix
+
         self.network.eval()
         res_explain = []
         labels = []
 
         for batch_nb, data in enumerate(tqdm(loader)):
-            if isinstance(data, tuple): # if we are running this on already labeled pairs and not just for inference
-                X, label = data 
-                labels.extend(label.numpy())        
+            # if we are running this on already labeled pairs and not just for inference
+            if isinstance(data, tuple):
+                X, label = data
+                labels.extend(label.numpy())
             else:
-                X = data 
+                X = data
 
             M_explain, masks = self.network.forward_masks(X)
             for key, value in masks.items():
@@ -284,20 +287,20 @@ class SIMSClassifier(pl.LightningModule):
                     res_masks[key] = np.vstack([res_masks[key], value])
 
         res_explain = np.vstack(res_explain)
-        
+
         if normalize:
             res_explain /= np.sum(res_explain, axis=1)[:, None]
 
         if cache:
             self._explain_matrix = res_explain
 
-        return res_explain, labels 
+        return res_explain, labels
 
     def _compute_feature_importances(self, dataloader):
         M_explain, _ = self.explain(dataloader, normalize=False)
         sum_explain = M_explain.sum(axis=0)
         feature_importances_ = sum_explain / np.sum(sum_explain)
-        
+
         return feature_importances_
 
     def feature_importances(self, dataloader, cache=False):
@@ -306,9 +309,9 @@ class SIMSClassifier(pl.LightningModule):
         else:
             f = self._compute_feature_importances(dataloader)
             if cache:
-                self._feature_importances = f 
-            return f 
-    
+                self._feature_importances = f
+            return f
+
     def save_model(self, path):
         saved_params = {}
         init_params = {}
@@ -333,7 +336,8 @@ class SIMSClassifier(pl.LightningModule):
             json.dump(saved_params, f, cls=ComplexEncoder)
 
         # Save state_dict
-        torch.save(self.network.state_dict(), Path(path).joinpath("network.pt"))
+        torch.save(self.network.state_dict(),
+                   Path(path).joinpath("network.pt"))
         shutil.make_archive(path, "zip", path)
         shutil.rmtree(path)
         print(f"Successfully saved model at {path}.zip")
@@ -347,7 +351,8 @@ class SIMSClassifier(pl.LightningModule):
                     loaded_params["init_params"]["device_name"] = self.device_name
                 with z.open("network.pt") as f:
                     try:
-                        saved_state_dict = torch.load(f, map_location=self.device)
+                        saved_state_dict = torch.load(
+                            f, map_location=self.device)
                     except io.UnsupportedOperation:
                         # In Python <3.7, the returned file object is not seekable (which at least
                         # some versions of PyTorch require) - so we'll try buffering it in to a
@@ -394,7 +399,8 @@ class SIMSClassifier(pl.LightningModule):
         for var_name, value in kwargs.items():
             if var_name in update_list:
                 try:
-                    exec(f"global previous_val; previous_val = self.{var_name}")
+                    exec(
+                        f"global previous_val; previous_val = self.{var_name}")
                     if previous_val != value:  # noqa
                         wrn_msg = f"Pretraining: {var_name} changed from {previous_val} to {value}"  # noqa
                         warnings.warn(wrn_msg)
@@ -406,12 +412,12 @@ class SIMSClassifier(pl.LightningModule):
         preds = []
         labels = []
         for X in tqdm(loader):
-            # Some dataloaders will have labels, handle this case 
+            # Some dataloaders will have labels, handle this case
             if len(X) == 2:
-                data, label = X 
+                data, label = X
                 labels.extend(label.numpy())
             else:
-                data = X 
+                data = X
 
             res, _ = self.network(data)
             res = np.argmax(res.detach(), axis=1)
@@ -420,29 +426,33 @@ class SIMSClassifier(pl.LightningModule):
         final = pd.DataFrame()
         final['predicted_label'] = preds
 
-        if labels != []: final['actual_label'] = labels 
+        if labels != []:
+            final['actual_label'] = labels
 
-        return final 
+        return final
+
 
 def confusion_matrix(model, dataloader, num_classes):
     confusion_matrix = torch.zeros(num_classes, num_classes)
     with torch.no_grad():
         for i, (inputs, classes) in enumerate(tqdm(dataloader)):
             outputs, _ = model(inputs)
-            
+
             _, preds = torch.max(outputs, 1)
             for t, p in zip(classes.view(-1), preds.view(-1)):
-                    confusion_matrix[t.long(), p.long()] += 1
-                    
-    return confusion_matrix 
+                confusion_matrix[t.long(), p.long()] += 1
+
+    return confusion_matrix
+
 
 def median_f1(tps, fps, fns):
     precisions = tps / (tps+fps)
     recalls = tps / (tps+fns)
-    
+
     f1s = 2*(np.dot(precisions, recalls)) / (precisions + recalls)
-    
+
     return np.nanmedian(f1s)
+
 
 def aggregate_metrics(num_classes) -> Dict[str, Callable]:
     metrics = {
@@ -450,16 +460,16 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
         'micro_accuracy': accuracy,
         'macro_accuracy': partial(accuracy, num_classes=num_classes, average="macro"),
         'weighted_accuracy': partial(accuracy, num_classes=num_classes, average="weighted"),
-        
+
         # Precision, recall and f1s, all macro weighted
         'precision': partial(precision, num_classes=num_classes, average="macro"),
         'recall': partial(recall, num_classes=num_classes, average="macro"),
         'f1': partial(f1_score, num_classes=num_classes, average="macro"),
-        
+
         # Random stuff I might want
         'specificity': partial(specificity, num_classes=num_classes, average="macro"),
         # 'confusion_matrix': partial(confusion_matrix, num_classes=num_classes),
         'auroc': partial(auroc, num_classes=num_classes, average="macro")
     }
-    
-    return metrics 
+
+    return metrics

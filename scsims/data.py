@@ -3,7 +3,7 @@ import inspect
 import warnings
 import pathlib
 
-from functools import partial
+from functools import partial, cached_property, cache
 from itertools import chain
 from typing import *
 

@@ -34,19 +34,15 @@ class Decoder(nn.Module):
         output_dim,
         input_dim=250,
         layers=None,
-        optim_params=None,
-        loss=None,
     ) -> None:
         super().__init__()
 
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.optim_params = optim_params
-        self.loss = loss if loss is not None else nn.MSELoss()
 
-        if input_dim > output_dim:
+        if output_dim < 10000:
             warnings.warn(
-                f"Output_dim > input_dim ({output_dim, input_dim}) in Decoder")
+                f"Output_dim < 10000 ({output_dim, input_dim}) in Decoder")
 
         self.decode = layers if layers is not None else nn.Sequential(
             nn.Linear(input_dim, 500),
@@ -64,17 +60,29 @@ class Decoder(nn.Module):
 
 
 class AutoEncoder(pl.LightningModule):
-    def __init__(self, data_shape, encoder_layers=None, decoder_layers=None) -> None:
+    def __init__(
+        self, 
+        data_shape, 
+        encoder_layers=None, 
+        decoder_layers=None,
+        optim_params=None,
+        scheduler_params=None,
+        loss=None,
+    ) -> None:
         super().__init__()
 
         self.encoder = Encoder(input_dim=data_shape, layers=encoder_layers)
         self.decoder = Decoder(output_dim=data_shape, layers=decoder_layers)
 
+        self.optim_params = optim_params
+        self.loss = loss if loss is not None else nn.MSELoss()
+        self.scheduler_params = scheduler_params
+
     def encode(self, x):
         return self.encoder(x)
 
     def decode(self, x):
-        return self.decode(x)
+        return self.decoder(x)
 
     def forward(self, x):
         x = self.encoder(x)
@@ -88,7 +96,7 @@ class AutoEncoder(pl.LightningModule):
             optimizer = optimizer(self.parameters(), **self.optim_params)
         else:
             optimizer = torch.optim.Adam(
-                self.parameters(), lr=0.2, weight_decay=1e-5
+                self.parameters(), lr=0.01, weight_decay=1e-5
             )
 
         if self.scheduler_params is not None:

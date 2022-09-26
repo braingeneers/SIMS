@@ -2,6 +2,9 @@ import torch
 import pytorch_lightning as pl
 import torch.nn as nn
 import warnings
+from torch.utils.data import Dataset
+from scipy.sparse import issparse
+
 
 class Encoder(nn.Module):
     def __init__(self, input_dim, output_dim=250, layers=None) -> None:
@@ -128,3 +131,24 @@ class AutoEncoder(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         return self._step("test_loss", batch)
+
+class AEDataset(Dataset):
+    def __init__(self, matrix) -> None:
+        super().__init__()
+        self.matrix = matrix
+
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            it = list(range(idx.start or 0, idx.stop or len(self), idx.step or 1))
+            return [self[i] for i in it]
+
+        data = self.matrix[idx]
+
+        # If matrix is sparse, then densify it for training
+        if issparse(data):
+            data = data.todense()
+
+        return torch.from_numpy(data)
+
+    def __len__(self):
+        return len(self.matrix)

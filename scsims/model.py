@@ -83,22 +83,16 @@ class SIMSClassifier(pl.LightningModule):
         else:
             self.metrics = metrics
 
-        if optim_params is None:
-            self.optim_params = {
-                'optimizer': torch.optim.Adam,
-                'lr': 0.001,
-                'weight_decay': 0.001,
-            }
-        else:
-            self.optim_params = optim_params
+        self.optim_params = optim_params if optim_params is not None else {
+            'optimizer': torch.optim.Adam,
+            'lr': 0.001,
+            'weight_decay': 0.001,
+        }
 
-        if scheduler_params is None:
-            self.scheduler_params = {
-                'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
-                'factor': 0.75,  # Reduce LR by 25% on plateau
-            }
-        else:
-            self.scheduler_params = scheduler_params
+        self.scheduler_params = scheduler_params if scheduler_params is not None else {
+            'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
+            'factor': 0.75,  # Reduce LR by 25% on plateau
+        }
 
         print(f'Initializing network')
         self.network = TabNet(

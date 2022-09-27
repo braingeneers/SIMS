@@ -4,7 +4,7 @@ import torch.nn as nn
 import warnings
 from torch.utils.data import Dataset
 from scipy.sparse import issparse
-
+import numpy as np
 
 class Encoder(nn.Module):
     def __init__(self, input_dim, output_dim=250, layers=None) -> None:
@@ -12,7 +12,7 @@ class Encoder(nn.Module):
 
         self.input_dim = input_dim
         self.output_dim = output_dim
-        if output_dim < 500:
+        if output_dim > 500:
             warnings.warn(
                 "Output_dim < 500, final layer has increasing dimensionality in Encoder")
 
@@ -24,6 +24,7 @@ class Encoder(nn.Module):
             nn.Linear(5000, 1000),
             nn.ReLU(),
             nn.Linear(1000, 500),
+            nn.ReLU(),
             nn.Linear(500, output_dim),
         )
 
@@ -55,6 +56,7 @@ class Decoder(nn.Module):
             nn.Linear(1000, 5000),
             nn.ReLU(),
             nn.Linear(5000, 10000),
+            nn.ReLU(),
             nn.Linear(10000, output_dim),
         )
 
@@ -77,9 +79,17 @@ class AutoEncoder(pl.LightningModule):
         self.encoder = Encoder(input_dim=data_shape, layers=encoder_layers)
         self.decoder = Decoder(output_dim=data_shape, layers=decoder_layers)
 
-        self.optim_params = optim_params
         self.loss = loss if loss is not None else nn.MSELoss()
-        self.scheduler_params = scheduler_params
+        self.optim_params = optim_params if optim_params is not None else {
+            'optimizer': torch.optim.Adam,
+            'lr': 0.001,
+            'weight_decay': 0.001,
+        }
+
+        self.scheduler_params = scheduler_params if scheduler_params is not None else {
+            'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
+            'factor': 0.75,  # Reduce LR by 25% on plateau
+        }
 
     def encode(self, x):
         return self.encoder(x)
@@ -135,7 +145,7 @@ class AutoEncoder(pl.LightningModule):
 class AEDataset(Dataset):
     def __init__(self, matrix) -> None:
         super().__init__()
-        self.matrix = matrix
+        self.matrix = np.asarray(matrix.todense()) if issparse(matrix) else matrix
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
@@ -143,12 +153,7 @@ class AEDataset(Dataset):
             return [self[i] for i in it]
 
         data = self.matrix[idx]
-
-        # If matrix is sparse, then densify it for training
-        if issparse(data):
-            data = data.todense()
-
         return torch.from_numpy(data)
 
     def __len__(self):
-        return len(self.matrix)
+        return self.matrix.shape[0]

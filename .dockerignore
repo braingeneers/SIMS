@@ -8,3 +8,4 @@ wandb/*
 **/wandb/*
 build/*
 *egg*
+dist/*

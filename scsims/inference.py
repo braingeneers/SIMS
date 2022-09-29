@@ -3,19 +3,17 @@ import pathlib
 from functools import cached_property
 from typing import Any, Collection, List
 
-import anndata as an
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
 import scanpy as sc
 import torch
 from scipy.sparse import issparse
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 
 from .data import *
 
 
-class TestDelimitedData(Dataset):
+class TestDelimitedDataset(Dataset):
     def __init__(
         self,
         datafile: str,
@@ -99,11 +97,8 @@ class TestDelimitedData(Dataset):
         return (self.__len__(), len(self.features))
 
 
-class TestAnndatasetMatrix(Dataset):
-    def __init__(self,
-                 matrix: np.ndarray,
-                 indices: Collection[int] = None,
-                 ) -> None:
+class TestMatrixDataset(Dataset):
+    def __init__(self, matrix: np.ndarray, indices: Collection[int] = None,) -> None:
         super().__init__()
         self.data = (matrix if indices is None else matrix[indices, :])
 

@@ -1,13 +1,14 @@
-import pandas as pd
-import numpy as np
-import anndata as an
-import pytorch_lightning as pl
 import pathlib
+from os.path import join
+
+import anndata as an
+import numpy as np
+import pandas as pd
+import pytorch_lightning as pl
 import torch
 
-from os.path import join
-from .model import SIMSClassifier
 from .lightning_train import DataModule
+from .model import SIMSClassifier
 
 here = pathlib.Path(__file__).parent.absolute()
 

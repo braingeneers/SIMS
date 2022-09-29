@@ -1,21 +1,23 @@
-import unittest 
+import os
+import pathlib
+import random
 import sys
-import os 
-import random 
-import pandas as pd 
-import anndata as an 
-import pandas as pd 
+import unittest
+
+import anndata as an
 import numpy as np
+import pandas as pd
 import torch
-import pathlib 
 from torch.utils.data import *
 
 random.seed(42)
-from os.path import join, dirname, abspath 
+from os.path import abspath, dirname, join
+
 sys.path.append(join(dirname(abspath(__file__)), '..', 'src'))
 
 from data import *
 from network import *
+
 
 def generate_synthetic_h5ad():
     df = pd.DataFrame(index=range(25), columns=[f'col_{i}' for i in range(10)])

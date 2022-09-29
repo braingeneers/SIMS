@@ -1,39 +1,27 @@
-import shutil
-import json
-import zipfile
-import io
 import copy
+import io
+import json
+import shutil
 import warnings
-import numpy as np
-from pathlib import Path
-import pandas as pd
-from typing import (
-    Dict,
-    Callable,
-)
+import zipfile
 from functools import partial
+from pathlib import Path
+from typing import Callable, Dict
 
-import torch
 import numpy as np
-import torchmetrics
+import pandas as pd
 import pytorch_lightning as pl
-from scipy.sparse import csc_matrix
-from pytorch_tabnet.utils import (
-    create_explain_matrix,
-    ComplexEncoder,
-)
+import torch
 import torch.nn.functional as F
+import torchmetrics
 from pytorch_tabnet.tab_network import TabNet
-from torchmetrics.functional.classification.stat_scores import _stat_scores_update
+from pytorch_tabnet.utils import ComplexEncoder, create_explain_matrix
+from scipy.sparse import csc_matrix
+from torchmetrics.functional import (accuracy, auroc, f1_score, precision,
+                                     recall, specificity)
+from torchmetrics.functional.classification.stat_scores import \
+    _stat_scores_update
 from tqdm import tqdm
-from torchmetrics.functional import (
-    precision,
-    recall,
-    accuracy,
-    f1_score,
-    specificity,
-    auroc,
-)
 
 
 class SIMSClassifier(pl.LightningModule):

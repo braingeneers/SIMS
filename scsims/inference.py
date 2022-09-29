@@ -1,22 +1,16 @@
 import linecache
-from typing import (
-    List,
-    Any,
-    Collection,
-)
-from functools import cached_property
 import pathlib
+from functools import cached_property
+from typing import Any, Collection, List
 
-import pandas as pd
-import torch
-import numpy as np
-import torch
-import scanpy as sc
 import anndata as an
-
-from torch.utils.data import Dataset, DataLoader
-from scipy.sparse import issparse
+import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
+import scanpy as sc
+import torch
+from scipy.sparse import issparse
+from torch.utils.data import DataLoader, Dataset
 
 from .data import *
 

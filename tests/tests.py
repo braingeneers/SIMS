@@ -1,18 +1,19 @@
-import pandas as pd 
 import os
 import sys
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import torch
+from pytorch_tabnet.tab_model import TabNetClassifier
 from torch.utils.data import *
 from tqdm import tqdm
-from pytorch_tabnet.tab_model import TabNetClassifier
 
 sys.path.append('../src/')
 sys.path.append('..')
 
-from src.models.lib.data import *
 from src.helper import *
+from src.models.lib.data import *
+
 
 def map_cols_test():
     ref = ['a', 'b', 'c']
@@ -71,7 +72,8 @@ def _test_first_n_samples(n, datafile, labelfile, class_label='Type', index_col=
     assert (all(p for p in similar))
 
 def test_split(n, datafile, labelfile, class_label='Type', index_col='cell'):
-    from sklearn.model_selection import train_test_split 
+    from sklearn.model_selection import train_test_split
+
     # 2*n is usually enough to capture differences in index_col
 
     label_df = pd.read_csv(labelfile, nrows=2*n)

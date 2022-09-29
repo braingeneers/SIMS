@@ -1,21 +1,19 @@
-import linecache
 import inspect
-import warnings
+import linecache
 import pathlib
-
-from functools import partial, cached_property, cache
+import warnings
+from functools import cache, cached_property, partial
 from itertools import chain
 from typing import *
 
+import anndata as an
+import numpy as np
 import pandas as pd
 import torch
-import numpy as np
-import anndata as an
-
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
+from scipy.sparse import issparse
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
-from scipy.sparse import issparse
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
 
 
 class DelimitedDataset(Dataset):

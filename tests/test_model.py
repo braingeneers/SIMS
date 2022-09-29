@@ -1,25 +1,26 @@
-import unittest 
+import os
+import pathlib
+import random
 import sys
-import os 
-import random 
-import pandas as pd 
-import anndata as an 
-import pandas as pd 
-import numpy as np
-import torch
-import pathlib 
-import sklearn as sk 
+import unittest
 
-import pytorch_lightning as pl 
+import anndata as an
+import numpy as np
+import pandas as pd
+import pytorch_lightning as pl
+import sklearn as sk
+import torch
 from torch.utils.data import *
 
 random.seed(42)
-from os.path import join, dirname, abspath 
+from os.path import abspath, dirname, join
+
 sys.path.append(join(dirname(abspath(__file__)), '..', 'src')) # hacky, to fix pathing 
 
 from data import *
 from lightning_train import *
 from model import *
+
 
 class TestModel(unittest.TestCase):
     @classmethod

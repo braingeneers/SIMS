@@ -72,12 +72,7 @@ class DataModule(pl.LightningDataModule):
         super().__init__()
 
         # Make sure we don't have datafiles/labelfiles AND urls at start
-        if (
-            urls is not None
-            and datafiles is not None
-            or urls is not None
-            and labelfiles is not None
-        ):
+        if urls is not None and datafiles is not None or urls is not None and labelfiles is not None:
             raise ValueError(
                 "Either a dictionary of data to download, or paths to datafiles and labelfiles are supported, but not both."
             )
@@ -94,9 +89,7 @@ class DataModule(pl.LightningDataModule):
         # If we have a list of urls, we can generate the list of paths of datafiles/labelfiles that will be downloaded after self.prepare_data()
         if self.urls is not None:
             self.datafiles = [join(self.datapath, f) for f in self.urls.keys()]
-            self.labelfiles = [
-                join(self.datapath, f"labels_{f}") for f in self.urls.keys()
-            ]
+            self.labelfiles = [join(self.datapath, f"labels_{f}") for f in self.urls.keys()]
         else:
             self.datafiles = datafiles
             self.labelfiles = labelfiles
@@ -104,9 +97,7 @@ class DataModule(pl.LightningDataModule):
         # Warn user in case tsv/csv ,/\t don't match, this can be annoying to diagnose
         suffix = pathlib.Path(self.labelfiles[0]).suffix
         if (sep == "\t" and suffix == "csv") or (sep == "," and suffix == ".tsv"):
-            warnings.warn(
-                f"Passed delimiter sep={sep} doesn't match file extension, continuing..."
-            )
+            warnings.warn(f"Passed delimiter sep={sep} doesn't match file extension, continuing...")
 
         # Infer sep based on .csv/.tsv of labelfile (assumed to be homogeneous in case of delimited datafiles) if sep is not passed
         if sep is None:
@@ -115,9 +106,7 @@ class DataModule(pl.LightningDataModule):
             elif suffix == ".csv":
                 self.sep = ","
             else:
-                warnings.warn(
-                    f'Separator not passed and not able to be inferred from suffix={suffix}. Falling back to ","'
-                )
+                warnings.warn(f'Separator not passed and not able to be inferred from suffix={suffix}. Falling back to ","')
                 self.sep = ","
         else:
             self.sep = sep
@@ -138,24 +127,11 @@ class DataModule(pl.LightningDataModule):
 
     def _encode_labels(self):
         unique_targets = np.array(
-            list(
-                set(
-                    np.concatenate(
-                        [
-                            pd.read_csv(df, sep=self.sep)
-                            .loc[:, self.class_label]
-                            .unique()
-                            for df in self.labelfiles
-                        ]
-                    )
-                )
-            )
+            list(set(np.concatenate([pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles])))
         )
 
         if not np.issubdtype(unique_targets.dtype, np.number):
-            print(
-                "Labels are non-numeric, using sklearn.preprocessing.LabelEncoder to encode."
-            )
+            print("Labels are non-numeric, using sklearn.preprocessing.LabelEncoder to encode.")
             self.label_encoder = LabelEncoder()
             self.label_encoder = self.label_encoder.fit(unique_targets)
 
@@ -165,9 +141,7 @@ class DataModule(pl.LightningDataModule):
                 labels = pd.read_csv(file, sep=self.sep)
 
                 if f"categorical_{self.class_label}" not in labels.columns:
-                    labels.loc[:, f"categorical_{self.class_label}"] = labels.loc[
-                        :, self.class_label
-                    ]
+                    labels.loc[:, f"categorical_{self.class_label}"] = labels.loc[:, self.class_label]
 
                     labels.loc[:, self.class_label] = self.label_encoder.transform(
                         labels.loc[:, f"categorical_{self.class_label}"]
@@ -219,18 +193,14 @@ class DataModule(pl.LightningDataModule):
     def num_labels(self):
         val = []
         for file in self.labelfiles:
-            val.extend(
-                list(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values)
-            )
+            val.extend(list(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values))
 
         return len(set(val))
 
     @cached_property
     def num_features(self):
         if self.urls is not None and not os.path.isfile(self.datafiles[0]):
-            print(
-                "Trying to calcuate num_features before data has been downloaded. Downloading and continuing..."
-            )
+            print("Trying to calcuate num_features before data has been downloaded. Downloading and continuing...")
             self.prepare_data()
 
         if "refgenes" in self.kwargs:
@@ -346,9 +316,7 @@ def generate_trainer(
     return trainer, model, module
 
 
-def download_raw_expression_matrices(
-    datasets: Dict[str, Tuple[str, str]], unzip: bool = True, datapath: str = None
-) -> None:
+def download_raw_expression_matrices(datasets: Dict[str, Tuple[str, str]], unzip: bool = True, datapath: str = None) -> None:
     """Downloads all raw datasets and label sets from cells.ucsc.edu, and then unzips them locally
 
     :param datasets: Dictionary of datasets such that each key maps to a tuple containing the expression matrix csv url in the first element,
@@ -362,11 +330,7 @@ def download_raw_expression_matrices(
     :type datapath: str, optional
     """
     # {local file name: [dataset url, labelset url]}
-    data_path = (
-        datapath
-        if datapath is not None
-        else os.path.join(here, "..", "..", "..", "data")
-    )
+    data_path = datapath if datapath is not None else os.path.join(here, "..", "..", "..", "data")
 
     for file, links in datasets.items():
         datafile_path = os.path.join(data_path, "raw", file)

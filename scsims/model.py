@@ -264,9 +264,7 @@ class SIMSClassifier(pl.LightningModule):
 
             M_explain, masks = self.network.forward_masks(X)
             for key, value in masks.items():
-                masks[key] = csc_matrix.dot(
-                    value.cpu().detach().numpy(), self.reducing_matrix
-                )
+                masks[key] = csc_matrix.dot(value.cpu().detach().numpy(), self.reducing_matrix)
 
             original_feat_explain = csc_matrix.dot(
                 M_explain.cpu().detach().numpy(),
@@ -449,9 +447,7 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
         # Accuracies
         "micro_accuracy": accuracy,
         "macro_accuracy": partial(accuracy, num_classes=num_classes, average="macro"),
-        "weighted_accuracy": partial(
-            accuracy, num_classes=num_classes, average="weighted"
-        ),
+        "weighted_accuracy": partial(accuracy, num_classes=num_classes, average="weighted"),
         # Precision, recall and f1s, all macro weighted
         "precision": partial(precision, num_classes=num_classes, average="macro"),
         "recall": partial(recall, num_classes=num_classes, average="macro"),

@@ -56,20 +56,14 @@ class TestDelimitedDataset(Dataset):
             return [self[i] for i in idxs]
 
         # The actual line in the datafile to get, corresponding to the number in the self.index_col values, otherwise the line at index "idx"
-        data_index = (
-            self._labeldf.loc[idx, self.index_col]
-            if self.index_col is not None
-            else idx
-        )
+        data_index = self._labeldf.loc[idx, self.index_col] if self.index_col is not None else idx
 
         # get gene expression for current cell from csv file
         # We skip some lines because we're reading directly from
         line = linecache.getline(self.datafile, data_index + self.skip)
 
         if self.cast:
-            data = torch.from_numpy(
-                np.array(line.split(self.sep), dtype=np.float32)
-            ).float()
+            data = torch.from_numpy(np.array(line.split(self.sep), dtype=np.float32)).float()
         else:
             data = np.array(line.split(self.sep))
 

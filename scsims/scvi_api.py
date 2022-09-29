@@ -27,9 +27,7 @@ class SIMS:
     def setup_data(self, *args, **kwargs):
         if self.verbose:
             print("Setting up label file for training")
-        self.labels = pd.DataFrame(
-            an.read_h5ad(self.adata, backed="r+").obs[self.labels_key]
-        )
+        self.labels = pd.DataFrame(an.read_h5ad(self.adata, backed="r+").obs[self.labels_key])
         self.labels.to_csv(join(here, "_temp_labels.csv"), index=True)
 
         if self.verbose:
@@ -47,9 +45,7 @@ class SIMS:
         self.label_encoder = self.datamodule.label_encoder
 
     def setup_model(self, *args, **kwargs):
-        self.model = SIMSClassifier(
-            self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs
-        )
+        self.model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
 
     def setup_trainer(self, *args, **kwargs):
         self.trainer = pl.Trainer(

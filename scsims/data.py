@@ -73,11 +73,7 @@ class DelimitedDataset(Dataset):
         if indices is None:
             self._labeldf = pd.read_csv(labelname, sep=self.sep)
         else:
-            self._labeldf = (
-                pd.read_csv(labelname, sep=self.sep)
-                .loc[indices, :]
-                .reset_index(drop=True)
-            )
+            self._labeldf = pd.read_csv(labelname, sep=self.sep).loc[indices, :].reset_index(drop=True)
 
     def __getitem__(self, idx: int):
         """Get sample at index
@@ -100,20 +96,14 @@ class DelimitedDataset(Dataset):
             return [self[i] for i in idxs]
 
         # The actual line in the datafile to get, corresponding to the number in the self.index_col values, otherwise the line at index "idx"
-        data_index = (
-            self._labeldf.loc[idx, self.index_col]
-            if self.index_col is not None
-            else idx
-        )
+        data_index = self._labeldf.loc[idx, self.index_col] if self.index_col is not None else idx
 
         # get gene expression for current cell from csv file
         # We skip some lines because we're reading directly from
         line = linecache.getline(self.filename, data_index + self.skip)
 
         if self.cast:
-            data = torch.from_numpy(
-                np.array(line.split(self.sep), dtype=np.float32)
-            ).float()
+            data = torch.from_numpy(np.array(line.split(self.sep), dtype=np.float32)).float()
         else:
             data = np.array(line.split(self.sep))
 
@@ -146,9 +136,7 @@ class DelimitedDataset(Dataset):
     def class_weights(self):
         labels = self._labeldf.loc[:, self.class_label].values
 
-        return compute_class_weight(
-            class_weight="balanced", classes=np.unique(labels), y=labels
-        )
+        return compute_class_weight(class_weight="balanced", classes=np.unique(labels), y=labels)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(filename={self.filename}, labelname={self.labelname})"
@@ -181,9 +169,7 @@ class AnnDatasetFile(Dataset):
 
         # If labelfile is passed, then we need an associated column to pull the class_label from
         if labelfile is not None and class_label is None:
-            raise ValueError(
-                "If labelfile is passed, column to corresponding class must be passed in class_label."
-            )
+            raise ValueError("If labelfile is passed, column to corresponding class must be passed in class_label.")
 
         if columns is None:
             warnings.warn(
@@ -198,17 +184,9 @@ class AnnDatasetFile(Dataset):
         self.columns = columns
 
         if subset is not None:
-            self.labels = (
-                pd.read_csv(labelfile, sep=self.sep, index_col=index_col)
-                .loc[subset, class_label]
-                .values
-            )
+            self.labels = pd.read_csv(labelfile, sep=self.sep, index_col=index_col).loc[subset, class_label].values
         else:
-            self.labels = (
-                pd.read_csv(labelfile, sep=self.sep, index_col=index_col)
-                .loc[:, class_label]
-                .values
-            )
+            self.labels = pd.read_csv(labelfile, sep=self.sep, index_col=index_col).loc[:, class_label].values
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
@@ -293,15 +271,9 @@ class CollateLoader(DataLoader):
         :raises ValueError: If refgenes are passed, currgenes also have to be passed otherwise we dont know what to align with
         """
 
-        if (
-            refgenes is None
-            and currgenes is not None
-            or refgenes is not None
-            and currgenes is None
-        ):
+        if refgenes is None and currgenes is not None or refgenes is not None and currgenes is None:
             raise ValueError(
-                "If refgenes is passed, currgenes must be passed too."
-                "If currgenes is passed, refgenes must be passed too."
+                "If refgenes is passed, currgenes must be passed too." "If currgenes is passed, refgenes must be passed too."
             )
 
         # Create collate_fn via a partial of the possible collators, depending on if columns intersection is being calculated
@@ -431,9 +403,7 @@ def _standard_collate(
         return _transform_sample(torch.stack(sample), normalize, transpose)
 
 
-def _transform_sample(
-    data: torch.Tensor, normalize: bool, transpose: bool
-) -> torch.Tensor:
+def _transform_sample(data: torch.Tensor, normalize: bool, transpose: bool) -> torch.Tensor:
     """
     Optionally normalize and tranpose a torch.Tensor
 
@@ -517,14 +487,10 @@ def generate_single_dataset(
 
     suffix = pathlib.Path(datafile).suffix
     if subset is not None:
-        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[
-            subset, :
-        ]
+        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[subset, :]
         current_labels = current_labels.loc[:, class_label]
     else:
-        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[
-            :, class_label
-        ]
+        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[:, class_label]
 
     if split:
         # Make stratified split on labels
@@ -572,9 +538,7 @@ def generate_single_dataset(
             )
     else:
         if preprocess:
-            raise ValueError(
-                "Cannot preprocess with delimited files. Use h5ad, loom, or h5 intead."
-            )
+            raise ValueError("Cannot preprocess with delimited files. Use h5ad, loom, or h5 intead.")
 
         if suffix != ".csv" and suffix != ".tsv":
             print(

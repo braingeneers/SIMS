@@ -60,15 +60,11 @@ def _test_first_n_samples(n, datafile, labelfile, class_label="Type", index_col=
     for i in range(n):
         datasample = data[i][0]
 
-        dfsample = torch.from_numpy(
-            data_df.loc[label_df.loc[i, index_col], :].values
-        ).float()
+        dfsample = torch.from_numpy(data_df.loc[label_df.loc[i, index_col], :].values).float()
         isclose = all(torch.isclose(datasample, dfsample))
         similar.append(isclose)
 
-    print(
-        f"First {n=} columns of expression matrix is equal to GeneExpressionData: {all(p for p in similar)}"
-    )
+    print(f"First {n=} columns of expression matrix is equal to GeneExpressionData: {all(p for p in similar)}")
 
     assert all(p for p in similar)
 
@@ -110,13 +106,9 @@ def test_split(n, datafile, labelfile, class_label="Type", index_col="cell"):
 
 def test_datamodule():
     N = 50
-    datafiles, labelfiles = list(INTERIM_DATA_AND_LABEL_FILES_LIST.keys()), list(
-        INTERIM_DATA_AND_LABEL_FILES_LIST.values()
-    )
+    datafiles, labelfiles = list(INTERIM_DATA_AND_LABEL_FILES_LIST.keys()), list(INTERIM_DATA_AND_LABEL_FILES_LIST.values())
     datafiles = [os.path.join("..", "data", "interim", f) for f in datafiles]
-    processed_labels = [
-        os.path.join("..", "data", "processed/labels", f) for f in labelfiles
-    ]
+    processed_labels = [os.path.join("..", "data", "processed/labels", f) for f in labelfiles]
 
     for datafile, labelfile in zip(datafiles, processed_labels):
         print(f"Testing {datafile=}")

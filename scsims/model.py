@@ -17,10 +17,15 @@ import torchmetrics
 from pytorch_tabnet.tab_network import TabNet
 from pytorch_tabnet.utils import ComplexEncoder, create_explain_matrix
 from scipy.sparse import csc_matrix
-from torchmetrics.functional import (accuracy, auroc, f1_score, precision,
-                                     recall, specificity)
-from torchmetrics.functional.classification.stat_scores import \
-    _stat_scores_update
+from torchmetrics.functional import (
+    accuracy,
+    auroc,
+    f1_score,
+    precision,
+    recall,
+    specificity,
+)
+from torchmetrics.functional.classification.stat_scores import _stat_scores_update
 from tqdm import tqdm
 
 
@@ -71,18 +76,26 @@ class SIMSClassifier(pl.LightningModule):
         else:
             self.metrics = metrics
 
-        self.optim_params = optim_params if optim_params is not None else {
-            'optimizer': torch.optim.Adam,
-            'lr': 0.001,
-            'weight_decay': 0.001,
-        }
+        self.optim_params = (
+            optim_params
+            if optim_params is not None
+            else {
+                "optimizer": torch.optim.Adam,
+                "lr": 0.001,
+                "weight_decay": 0.001,
+            }
+        )
 
-        self.scheduler_params = scheduler_params if scheduler_params is not None else {
-            'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
-            'factor': 0.75,  # Reduce LR by 25% on plateau
-        }
+        self.scheduler_params = (
+            scheduler_params
+            if scheduler_params is not None
+            else {
+                "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau,
+                "factor": 0.75,  # Reduce LR by 25% on plateau
+            }
+        )
 
-        print(f'Initializing network')
+        print(f"Initializing network")
         self.network = TabNet(
             input_dim=input_dim,
             output_dim=output_dim,
@@ -101,7 +114,7 @@ class SIMSClassifier(pl.LightningModule):
             mask_type=mask_type,
         )
 
-        print(f'Initializing explain matrix')
+        print(f"Initializing explain matrix")
         if not no_explain:
             self.reducing_matrix = create_explain_matrix(
                 self.network.input_dim,
@@ -120,13 +133,14 @@ class SIMSClassifier(pl.LightningModule):
 
         return self.loss(y, y_hat, weight=self.weights)
 
-    def _compute_metrics(self,
-                         y_hat: torch.Tensor,
-                         y: torch.Tensor,
-                         tag: str,
-                         on_epoch=True,
-                         on_step=True,
-                         ):
+    def _compute_metrics(
+        self,
+        y_hat: torch.Tensor,
+        y: torch.Tensor,
+        tag: str,
+        on_epoch=True,
+        on_step=True,
+    ):
         for name, metric in self.metrics.items():
             val = metric(y_hat, y)
             self.log(
@@ -164,20 +178,20 @@ class SIMSClassifier(pl.LightningModule):
 
     # Calculations on step
     def training_step(self, batch, batch_idx):
-        return self._step(batch, 'train')
+        return self._step(batch, "train")
 
     def validation_step(self, batch, batch_idx):
-        return self._step(batch, 'val')
+        return self._step(batch, "val")
 
     def test_step(self, batch, batch_idx):
-        return self._step(batch, 'test')
+        return self._step(batch, "test")
 
     def _epoch_end(self, step_outputs, tag):
         tps, fps, fns = [], [], []
 
         for i in range(len(step_outputs)):
             res = step_outputs[i]
-            tp, fp, fn = res['tp'], res['fp'], res['fn']
+            tp, fp, fn = res["tp"], res["fp"], res["fn"]
 
             tps.append(tp.cpu().numpy())
             fps.append(fp.cpu().numpy())
@@ -189,7 +203,7 @@ class SIMSClassifier(pl.LightningModule):
 
         precision = tp / (tp + fp)
         recall = tp / (tp + fn)
-        f1s = 2*(precision * recall) / (precision + recall)
+        f1s = 2 * (precision * recall) / (precision + recall)
         f1s = np.nan_to_num(f1s)
 
         self.log(
@@ -197,40 +211,39 @@ class SIMSClassifier(pl.LightningModule):
             np.nanmedian(f1s),
             logger=True,
             on_step=False,
-            on_epoch=True
+            on_epoch=True,
         )
 
         return f1s
 
     # Calculation on epoch end, for "median F1 score"
     def training_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs, 'train')
+        self._epoch_end(step_outputs, "train")
 
     def validation_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs, 'val')
+        self._epoch_end(step_outputs, "val")
 
     def test_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs, 'test')
+        self._epoch_end(step_outputs, "test")
 
     def configure_optimizers(self):
-        if 'optimizer' in self.optim_params:
-            optimizer = self.optim_params.pop('optimizer')
+        if "optimizer" in self.optim_params:
+            optimizer = self.optim_params.pop("optimizer")
             optimizer = optimizer(self.parameters(), **self.optim_params)
         else:
-            optimizer = torch.optim.Adam(
-                self.parameters(), lr=0.2, weight_decay=1e-5)
+            optimizer = torch.optim.Adam(self.parameters(), lr=0.2, weight_decay=1e-5)
 
         if self.scheduler_params is not None:
-            scheduler = self.scheduler_params.pop('scheduler')
+            scheduler = self.scheduler_params.pop("scheduler")
             scheduler = scheduler(optimizer, **self.scheduler_params)
 
         if self.scheduler_params is None:
             return optimizer
 
         return {
-            'optimizer': optimizer,
-            'lr_scheduler': scheduler,
-            'monitor': 'train_loss',
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "train_loss",
         }
 
     def explain(self, loader, cache=False, normalize=False):
@@ -305,9 +318,7 @@ class SIMSClassifier(pl.LightningModule):
                 init_params[key] = val
         saved_params["init_params"] = init_params
 
-        class_attrs = {
-            "preds_mapper": self.preds_mapper
-        }
+        class_attrs = {"preds_mapper": self.preds_mapper}
         saved_params["class_attrs"] = class_attrs
 
         # Create folder
@@ -318,8 +329,7 @@ class SIMSClassifier(pl.LightningModule):
             json.dump(saved_params, f, cls=ComplexEncoder)
 
         # Save state_dict
-        torch.save(self.network.state_dict(),
-                   Path(path).joinpath("network.pt"))
+        torch.save(self.network.state_dict(), Path(path).joinpath("network.pt"))
         shutil.make_archive(path, "zip", path)
         shutil.rmtree(path)
         print(f"Successfully saved model at {path}.zip")
@@ -333,8 +343,7 @@ class SIMSClassifier(pl.LightningModule):
                     loaded_params["init_params"]["device_name"] = self.device_name
                 with z.open("network.pt") as f:
                     try:
-                        saved_state_dict = torch.load(
-                            f, map_location=self.device)
+                        saved_state_dict = torch.load(f, map_location=self.device)
                     except io.UnsupportedOperation:
                         # In Python <3.7, the returned file object is not seekable (which at least
                         # some versions of PyTorch require) - so we'll try buffering it in to a
@@ -381,8 +390,7 @@ class SIMSClassifier(pl.LightningModule):
         for var_name, value in kwargs.items():
             if var_name in update_list:
                 try:
-                    exec(
-                        f"global previous_val; previous_val = self.{var_name}")
+                    exec(f"global previous_val; previous_val = self.{var_name}")
                     if previous_val != value:  # noqa
                         wrn_msg = f"Pretraining: {var_name} changed from {previous_val} to {value}"  # noqa
                         warnings.warn(wrn_msg)
@@ -406,10 +414,10 @@ class SIMSClassifier(pl.LightningModule):
             preds.extend(res.numpy())
 
         final = pd.DataFrame()
-        final['predicted_label'] = preds
+        final["predicted_label"] = preds
 
         if labels != []:
-            final['actual_label'] = labels
+            final["actual_label"] = labels
 
         return final
 
@@ -428,10 +436,10 @@ def confusion_matrix(model, dataloader, num_classes):
 
 
 def median_f1(tps, fps, fns):
-    precisions = tps / (tps+fps)
-    recalls = tps / (tps+fns)
+    precisions = tps / (tps + fps)
+    recalls = tps / (tps + fns)
 
-    f1s = 2*(np.dot(precisions, recalls)) / (precisions + recalls)
+    f1s = 2 * (np.dot(precisions, recalls)) / (precisions + recalls)
 
     return np.nanmedian(f1s)
 
@@ -439,19 +447,19 @@ def median_f1(tps, fps, fns):
 def aggregate_metrics(num_classes) -> Dict[str, Callable]:
     metrics = {
         # Accuracies
-        'micro_accuracy': accuracy,
-        'macro_accuracy': partial(accuracy, num_classes=num_classes, average="macro"),
-        'weighted_accuracy': partial(accuracy, num_classes=num_classes, average="weighted"),
-
+        "micro_accuracy": accuracy,
+        "macro_accuracy": partial(accuracy, num_classes=num_classes, average="macro"),
+        "weighted_accuracy": partial(
+            accuracy, num_classes=num_classes, average="weighted"
+        ),
         # Precision, recall and f1s, all macro weighted
-        'precision': partial(precision, num_classes=num_classes, average="macro"),
-        'recall': partial(recall, num_classes=num_classes, average="macro"),
-        'f1': partial(f1_score, num_classes=num_classes, average="macro"),
-
+        "precision": partial(precision, num_classes=num_classes, average="macro"),
+        "recall": partial(recall, num_classes=num_classes, average="macro"),
+        "f1": partial(f1_score, num_classes=num_classes, average="macro"),
         # Random stuff I might want
-        'specificity': partial(specificity, num_classes=num_classes, average="macro"),
+        "specificity": partial(specificity, num_classes=num_classes, average="macro"),
         # 'confusion_matrix': partial(confusion_matrix, num_classes=num_classes),
-        'auroc': partial(auroc, num_classes=num_classes, average="macro")
+        "auroc": partial(auroc, num_classes=num_classes, average="macro"),
     }
 
     return metrics

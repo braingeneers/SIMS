@@ -26,16 +26,17 @@ class SIMS:
 
     def setup_data(self, *args, **kwargs):
         if self.verbose:
-            print('Setting up label file for training')
-        self.labels = pd.DataFrame(an.read_h5ad(
-            self.adata, backed='r+').obs[self.labels_key])
-        self.labels.to_csv(join(here, '_temp_labels.csv'), index=True)
+            print("Setting up label file for training")
+        self.labels = pd.DataFrame(
+            an.read_h5ad(self.adata, backed="r+").obs[self.labels_key]
+        )
+        self.labels.to_csv(join(here, "_temp_labels.csv"), index=True)
 
         if self.verbose:
-            print('Setting up DataModule')
+            print("Setting up DataModule")
         self.datamodule = DataModule(
             datafiles=[self.adata],
-            labelfiles=[join(here, '_temp_labels.csv')],
+            labelfiles=[join(here, "_temp_labels.csv")],
             class_label=self.labels_key,
             *args,
             **kwargs,
@@ -47,10 +48,7 @@ class SIMS:
 
     def setup_model(self, *args, **kwargs):
         self.model = SIMSClassifier(
-            self.datamodule.input_dim,
-            self.datamodule.output_dim,
-            *args,
-            **kwargs
+            self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs
         )
 
     def setup_trainer(self, *args, **kwargs):
@@ -66,11 +64,11 @@ class SIMS:
         self.setup_trainer()
 
     def train(self, *args, **kwargs):
-        if not hasattr(self, 'datamodule'):
+        if not hasattr(self, "datamodule"):
             self.setup_data()
-        if not hasattr(self, 'trainer'):
+        if not hasattr(self, "trainer"):
             self.setup_trainer()
-        if not hasattr(self, 'model'):
+        if not hasattr(self, "model"):
             self.setup_model()
 
         self.trainer.fit(self.model, datamodule=self.datamodule)

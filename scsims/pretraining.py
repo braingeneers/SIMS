@@ -6,8 +6,12 @@ import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
-from pytorch_tabnet.tab_network import (EmbeddingGenerator, RandomObfuscator,
-                                        TabNetDecoder, TabNetEncoder)
+from pytorch_tabnet.tab_network import (
+    EmbeddingGenerator,
+    RandomObfuscator,
+    TabNetDecoder,
+    TabNetEncoder,
+)
 
 # ALL THIS IS FLATTENING THE API FROM https://github.com/dreamquark-ai/tabnet
 # GIVE MASSIVE CREDIT
@@ -28,7 +32,7 @@ class NoiseObfuscator(torch.nn.Module):
         self.variance = variance
 
     def forward(self, x):
-        return x + self.variance*torch.randn_like(x)
+        return x + self.variance * torch.randn_like(x)
 
 
 def UnsupervisedLoss(y_pred, embedded_x, obf_vars, eps=1e-9):
@@ -147,8 +151,7 @@ class TabNetPretraining(pl.LightningModule):
             raise ValueError("n_shared and n_independent can't be both zero.")
 
         self.virtual_batch_size = virtual_batch_size
-        self.embedder = EmbeddingGenerator(
-            input_dim, cat_dims, cat_idxs, cat_emb_dim)
+        self.embedder = EmbeddingGenerator(input_dim, cat_dims, cat_idxs, cat_emb_dim)
         self.post_embed_dim = self.embedder.post_embed_dim
 
         self.masker = RandomObfuscator(self.pretraining_ratio)
@@ -199,18 +202,19 @@ class TabNetPretraining(pl.LightningModule):
         y, y_hat, loss = self._step(batch)
 
         self.log("train_loss", loss, logger=True, on_epoch=True, on_step=True)
-        self._compute_metrics(y_hat, y, 'train')
+        self._compute_metrics(y_hat, y, "train")
 
         return loss
 
-    def _compute_metrics(self,
-                         y_hat: torch.Tensor,
-                         y: torch.Tensor,
-                         tag: str,
-                         on_epoch=True,
-                         on_step=False,
-                         ):
-        val = metric(y_hat, y, average='weighted', num_classes=self.output_dim)
+    def _compute_metrics(
+        self,
+        y_hat: torch.Tensor,
+        y: torch.Tensor,
+        tag: str,
+        on_epoch=True,
+        on_step=False,
+    ):
+        val = metric(y_hat, y, average="weighted", num_classes=self.output_dim)
 
         self.log(
             f"Reconstuction loss",

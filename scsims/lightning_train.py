@@ -29,10 +29,10 @@ class DataModule(pl.LightningDataModule):
         urls: Dict[str, List[str]] = None,
         sep: str = None,
         unzip: bool = True,
-        datapath: str = '',
+        datapath: str = "",
         batch_size=32,
         num_workers=0,
-        device=('cuda:0' if torch.cuda.is_available() else None),
+        device=("cuda:0" if torch.cuda.is_available() else None),
         split=True,
         *args,
         **kwargs,
@@ -72,9 +72,15 @@ class DataModule(pl.LightningDataModule):
         super().__init__()
 
         # Make sure we don't have datafiles/labelfiles AND urls at start
-        if urls is not None and datafiles is not None or urls is not None and labelfiles is not None:
+        if (
+            urls is not None
+            and datafiles is not None
+            or urls is not None
+            and labelfiles is not None
+        ):
             raise ValueError(
-                "Either a dictionary of data to download, or paths to datafiles and labelfiles are supported, but not both.")
+                "Either a dictionary of data to download, or paths to datafiles and labelfiles are supported, but not both."
+            )
 
         self.device = device
         self.class_label = class_label
@@ -89,27 +95,30 @@ class DataModule(pl.LightningDataModule):
         if self.urls is not None:
             self.datafiles = [join(self.datapath, f) for f in self.urls.keys()]
             self.labelfiles = [
-                join(self.datapath, f'labels_{f}') for f in self.urls.keys()]
+                join(self.datapath, f"labels_{f}") for f in self.urls.keys()
+            ]
         else:
             self.datafiles = datafiles
             self.labelfiles = labelfiles
 
         # Warn user in case tsv/csv ,/\t don't match, this can be annoying to diagnose
         suffix = pathlib.Path(self.labelfiles[0]).suffix
-        if (sep == '\t' and suffix == 'csv') or (sep == ',' and suffix == '.tsv'):
+        if (sep == "\t" and suffix == "csv") or (sep == "," and suffix == ".tsv"):
             warnings.warn(
-                f'Passed delimiter sep={sep} doesn\'t match file extension, continuing...')
+                f"Passed delimiter sep={sep} doesn't match file extension, continuing..."
+            )
 
         # Infer sep based on .csv/.tsv of labelfile (assumed to be homogeneous in case of delimited datafiles) if sep is not passed
         if sep is None:
-            if suffix == '.tsv':
-                self.sep = '\t'
-            elif suffix == '.csv':
-                self.sep = ','
+            if suffix == ".tsv":
+                self.sep = "\t"
+            elif suffix == ".csv":
+                self.sep = ","
             else:
                 warnings.warn(
-                    f'Separator not passed and not able to be inferred from suffix={suffix}. Falling back to ","')
-                self.sep = ','
+                    f'Separator not passed and not able to be inferred from suffix={suffix}. Falling back to ","'
+                )
+                self.sep = ","
         else:
             self.sep = sep
 
@@ -128,33 +137,40 @@ class DataModule(pl.LightningDataModule):
         self._encode_labels()
 
     def _encode_labels(self):
-        unique_targets = np.array(list(
-            set(
-                np.concatenate(
-                    [pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique()
-                     for df in self.labelfiles]
+        unique_targets = np.array(
+            list(
+                set(
+                    np.concatenate(
+                        [
+                            pd.read_csv(df, sep=self.sep)
+                            .loc[:, self.class_label]
+                            .unique()
+                            for df in self.labelfiles
+                        ]
+                    )
                 )
             )
-        ))
+        )
 
         if not np.issubdtype(unique_targets.dtype, np.number):
             print(
-                'Labels are non-numeric, using sklearn.preprocessing.LabelEncoder to encode.')
+                "Labels are non-numeric, using sklearn.preprocessing.LabelEncoder to encode."
+            )
             self.label_encoder = LabelEncoder()
             self.label_encoder = self.label_encoder.fit(unique_targets)
 
             for idx, file in enumerate(self.labelfiles):
-                print(
-                    f'Transforming labelfile {idx + 1}/{len(self.labelfiles)}')
+                print(f"Transforming labelfile {idx + 1}/{len(self.labelfiles)}")
 
                 labels = pd.read_csv(file, sep=self.sep)
 
-                if f'categorical_{self.class_label}' not in labels.columns:
-                    labels.loc[:,
-                               f'categorical_{self.class_label}'] = labels.loc[:, self.class_label]
+                if f"categorical_{self.class_label}" not in labels.columns:
+                    labels.loc[:, f"categorical_{self.class_label}"] = labels.loc[
+                        :, self.class_label
+                    ]
 
                     labels.loc[:, self.class_label] = self.label_encoder.transform(
-                        labels.loc[:, f'categorical_{self.class_label}']
+                        labels.loc[:, f"categorical_{self.class_label}"]
                     )
 
                     # Don't need to re-index here
@@ -162,7 +178,7 @@ class DataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None):
         if self.split:
-            print('Creating train/val/test DataLoaders...')
+            print("Creating train/val/test DataLoaders...")
             trainloader, valloader, testloader = generate_dataloaders(
                 datafiles=self.datafiles,
                 labelfiles=self.labelfiles,
@@ -175,14 +191,14 @@ class DataModule(pl.LightningDataModule):
                 **self.kwargs,
             )
 
-            print('Done, continuing to training.')
+            print("Done, continuing to training.")
             self.trainloader = trainloader
             self.valloader = valloader
             self.testloader = testloader
         else:
             pass
 
-        print('Calculating weights')
+        print("Calculating weights")
         self.weights = compute_class_weights(
             labelfiles=self.labelfiles,
             class_label=self.class_label,
@@ -204,7 +220,8 @@ class DataModule(pl.LightningDataModule):
         val = []
         for file in self.labelfiles:
             val.extend(
-                list(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values))
+                list(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values)
+            )
 
         return len(set(val))
 
@@ -212,14 +229,15 @@ class DataModule(pl.LightningDataModule):
     def num_features(self):
         if self.urls is not None and not os.path.isfile(self.datafiles[0]):
             print(
-                'Trying to calcuate num_features before data has been downloaded. Downloading and continuing...')
+                "Trying to calcuate num_features before data has been downloaded. Downloading and continuing..."
+            )
             self.prepare_data()
 
-        if 'refgenes' in self.kwargs:
-            return len(self.kwargs['refgenes'])
-        elif hasattr(self, 'trainloader'):
+        if "refgenes" in self.kwargs:
+            return len(self.kwargs["refgenes"])
+        elif hasattr(self, "trainloader"):
             return next(iter(self.trainloader))[0].shape[1]
-        elif pathlib.Path(self.datafiles[0]).suffix == '.h5ad':
+        elif pathlib.Path(self.datafiles[0]).suffix == ".h5ad":
             return an.read_h5ad(self.datafiles[0]).X.shape[1]
         else:
             return pd.read_csv(self.datafiles[0], nrows=1, sep=self.sep).shape[1]
@@ -245,8 +263,8 @@ def generate_trainer(
     batch_size: int,
     num_workers: int,
     optim_params: Dict[str, Any] = {
-        'optimizer': torch.optim.Adam,
-        'lr': 0.02,
+        "optimizer": torch.optim.Adam,
+        "lr": 0.02,
     },
     weighted_metrics: bool = None,
     scheduler_params: Dict[str, float] = None,
@@ -279,23 +297,20 @@ def generate_trainer(
     :rtype: Trainer, model, datamodule
     """
 
-    device = ('cuda:0' if torch.cuda.is_available() else 'cpu')
-    print(f'Device is {device}')
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    print(f"Device is {device}")
 
     here = pathlib.Path(__file__).parent.absolute()
-    data_path = os.path.join(here, '..', '..', '..', 'data')
+    data_path = os.path.join(here, "..", "..", "..", "data")
 
-    wandb_logger = WandbLogger(
-        project=f"tabnet-classifer-sweep",
-        name=wandb_name
-    )
+    wandb_logger = WandbLogger(project=f"tabnet-classifer-sweep", name=wandb_name)
 
     early_stop_callback = EarlyStopping(
         monitor=("weighted_val_accuracy" if weighted_metrics else "val_accuarcy"),
         min_delta=0.00,
         patience=3,
         verbose=False,
-        mode="max"
+        mode="max",
     )
 
     module = DataModule(
@@ -332,9 +347,7 @@ def generate_trainer(
 
 
 def download_raw_expression_matrices(
-    datasets: Dict[str, Tuple[str, str]],
-    unzip: bool = True,
-    datapath: str = None
+    datasets: Dict[str, Tuple[str, str]], unzip: bool = True, datapath: str = None
 ) -> None:
     """Downloads all raw datasets and label sets from cells.ucsc.edu, and then unzips them locally
 
@@ -349,35 +362,34 @@ def download_raw_expression_matrices(
     :type datapath: str, optional
     """
     # {local file name: [dataset url, labelset url]}
-    data_path = (datapath if datapath is not None else os.path.join(
-        here, '..', '..', '..', 'data'))
+    data_path = (
+        datapath
+        if datapath is not None
+        else os.path.join(here, "..", "..", "..", "data")
+    )
 
     for file, links in datasets.items():
-        datafile_path = os.path.join(data_path, 'raw', file)
+        datafile_path = os.path.join(data_path, "raw", file)
 
-        labelfile = f'{file[:-4]}_labels.tsv'
+        labelfile = f"{file[:-4]}_labels.tsv"
 
         datalink, _ = links
 
         # First, make the required folders if they do not exist
-        for dir in 'raw':
+        for dir in "raw":
             os.makedirs(os.path.join(data_path, dir), exist_ok=True)
 
         # Download and unzip data file if it doesn't exist
         if not os.path.isfile(datafile_path):
-            print(f'Downloading zipped data for {file}')
+            print(f"Downloading zipped data for {file}")
             urllib.request.urlretrieve(
                 datalink,
-                f'{datafile_path}.gz',
+                f"{datafile_path}.gz",
             )
 
             if unzip:
-                print(f'Unzipping {file}')
-                os.system(
-                    f'zcat < {datafile_path}.gz > {datafile_path}'
-                )
+                print(f"Unzipping {file}")
+                os.system(f"zcat < {datafile_path}.gz > {datafile_path}")
 
-                print(f'Deleting compressed data')
-                os.system(
-                    f'rm -rf {datafile_path}.gz'
-                )
+                print(f"Deleting compressed data")
+                os.system(f"rm -rf {datafile_path}.gz")

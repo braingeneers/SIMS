@@ -25,7 +25,7 @@ class DelimitedDataset(Dataset):
         indices: Collection[int] = None,
         skip: int = 3,
         cast: bool = True,
-        sep: bool = ',',
+        sep: bool = ",",
         index_col: str = None,
         columns: List[any] = None,
         **kwargs,  # To handle extraneous inputs
@@ -73,8 +73,11 @@ class DelimitedDataset(Dataset):
         if indices is None:
             self._labeldf = pd.read_csv(labelname, sep=self.sep)
         else:
-            self._labeldf = pd.read_csv(
-                labelname, sep=self.sep).loc[indices, :].reset_index(drop=True)
+            self._labeldf = (
+                pd.read_csv(labelname, sep=self.sep)
+                .loc[indices, :]
+                .reset_index(drop=True)
+            )
 
     def __getitem__(self, idx: int):
         """Get sample at index
@@ -92,14 +95,15 @@ class DelimitedDataset(Dataset):
                     f"Error: Unlike other iterables, {self.__class__.__name__} does not support unbounded slicing since samples are being read as needed from disk, which may result in memory errors."
                 )
 
-            step = (1 if idx.step is None else idx.step)
+            step = 1 if idx.step is None else idx.step
             idxs = range(idx.start, idx.stop, step)
             return [self[i] for i in idxs]
 
         # The actual line in the datafile to get, corresponding to the number in the self.index_col values, otherwise the line at index "idx"
         data_index = (
-            self._labeldf.loc[idx,
-                              self.index_col] if self.index_col is not None else idx
+            self._labeldf.loc[idx, self.index_col]
+            if self.index_col is not None
+            else idx
         )
 
         # get gene expression for current cell from csv file
@@ -108,7 +112,8 @@ class DelimitedDataset(Dataset):
 
         if self.cast:
             data = torch.from_numpy(
-                np.array(line.split(self.sep), dtype=np.float32)).float()
+                np.array(line.split(self.sep), dtype=np.float32)
+            ).float()
         else:
             data = np.array(line.split(self.sep))
 
@@ -127,8 +132,7 @@ class DelimitedDataset(Dataset):
             return self._cols
         else:
             data = linecache.getline(self.filename, self.skip - 1)
-            data = [x.split('|')[0].upper().strip()
-                    for x in data.split(self.sep)]
+            data = [x.split("|")[0].upper().strip() for x in data.split(self.sep)]
             return data
 
     @cached_property
@@ -143,9 +147,7 @@ class DelimitedDataset(Dataset):
         labels = self._labeldf.loc[:, self.class_label].values
 
         return compute_class_weight(
-            class_weight='balanced',
-            classes=np.unique(labels),
-            y=labels
+            class_weight="balanced", classes=np.unique(labels), y=labels
         )
 
     def __repr__(self) -> str:
@@ -163,27 +165,30 @@ class DelimitedDataset(Dataset):
 
 
 class AnnDatasetFile(Dataset):
-    def __init__(self,
-                 matrix: np.ndarray,
-                 labelfile: str,
-                 class_label: str,
-                 index_col=None,
-                 subset=None,
-                 sep=',',
-                 columns: List[any] = None,
-                 *args,
-                 **kwargs,
-                 ) -> None:
+    def __init__(
+        self,
+        matrix: np.ndarray,
+        labelfile: str,
+        class_label: str,
+        index_col=None,
+        subset=None,
+        sep=",",
+        columns: List[any] = None,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__()
 
         # If labelfile is passed, then we need an associated column to pull the class_label from
         if labelfile is not None and class_label is None:
             raise ValueError(
-                "If labelfile is passed, column to corresponding class must be passed in class_label.")
+                "If labelfile is passed, column to corresponding class must be passed in class_label."
+            )
 
         if columns is None:
             warnings.warn(
-                f"{self.__class__.__name__} initialized without columns. This will error if training with multiple Datasets with potentially different columns.")
+                f"{self.__class__.__name__} initialized without columns. This will error if training with multiple Datasets with potentially different columns."
+            )
 
         self.data = matrix
         self.labelfile = labelfile
@@ -194,13 +199,15 @@ class AnnDatasetFile(Dataset):
 
         if subset is not None:
             self.labels = (
-                pd.read_csv(labelfile, sep=self.sep,
-                            index_col=index_col).loc[subset, class_label].values
+                pd.read_csv(labelfile, sep=self.sep, index_col=index_col)
+                .loc[subset, class_label]
+                .values
             )
         else:
             self.labels = (
-                pd.read_csv(labelfile, sep=self.sep,
-                            index_col=index_col).loc[:, class_label].values
+                pd.read_csv(labelfile, sep=self.sep, index_col=index_col)
+                .loc[:, class_label]
+                .values
             )
 
     def __getitem__(self, idx):
@@ -214,23 +221,21 @@ class AnnDatasetFile(Dataset):
         if issparse(data):
             data = data.todense()
 
-        return (
-            torch.from_numpy(data),
-            self.labels[idx]
-        )
+        return (torch.from_numpy(data), self.labels[idx])
 
     def __len__(self):
         return len(self.data)
 
 
 class AnnDatasetMatrix(Dataset):
-    def __init__(self,
-                 matrix: np.ndarray,
-                 labels: List[any],
-                 split: Collection[int] = None,
-                 *args,
-                 **kwargs,
-                 ) -> None:
+    def __init__(
+        self,
+        matrix: np.ndarray,
+        labels: List[any],
+        split: Collection[int] = None,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__()
         self.data = matrix
         self.labels = labels
@@ -238,7 +243,7 @@ class AnnDatasetMatrix(Dataset):
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
-            step = (1 if idx.step is None else idx.step)
+            step = 1 if idx.step is None else idx.step
             idxs = range(idx.start, idx.stop, step)
             return [self[i] for i in idxs]
 
@@ -249,15 +254,10 @@ class AnnDatasetMatrix(Dataset):
             # Need to get first row of 1xp matrix, weirdly this is how to do it :shrug:
             data = np.squeeze(np.asarray(data))
 
-        return (
-            torch.from_numpy(data),
-            self.labels[idx]
-        )
+        return (torch.from_numpy(data), self.labels[idx])
 
     def __len__(self):
-        return (
-            self.data.shape[0] if issparse(self.data) else len(self.data)
-        )
+        return self.data.shape[0] if issparse(self.data) else len(self.data)
 
     @property
     def shape(self):
@@ -293,7 +293,12 @@ class CollateLoader(DataLoader):
         :raises ValueError: If refgenes are passed, currgenes also have to be passed otherwise we dont know what to align with
         """
 
-        if refgenes is None and currgenes is not None or refgenes is not None and currgenes is None:
+        if (
+            refgenes is None
+            and currgenes is not None
+            or refgenes is not None
+            and currgenes is None
+        ):
             raise ValueError(
                 "If refgenes is passed, currgenes must be passed too."
                 "If currgenes is passed, refgenes must be passed too."
@@ -427,9 +432,7 @@ def _standard_collate(
 
 
 def _transform_sample(
-    data: torch.Tensor,
-    normalize: bool,
-    transpose: bool
+    data: torch.Tensor, normalize: bool, transpose: bool
 ) -> torch.Tensor:
     """
     Optionally normalize and tranpose a torch.Tensor
@@ -487,7 +490,7 @@ def generate_single_dataset(
     index_col: str,
     split: bool = True,
     test_prop: float = 0.2,
-    sep: str = ',',
+    sep: str = ",",
     subset: Collection[int] = None,
     stratify: bool = True,
     deterministic: bool = False,
@@ -514,12 +517,14 @@ def generate_single_dataset(
 
     suffix = pathlib.Path(datafile).suffix
     if subset is not None:
-        current_labels = pd.read_csv(
-            labelfile, sep=sep, index_col=index_col).iloc[subset, :]
+        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[
+            subset, :
+        ]
         current_labels = current_labels.loc[:, class_label]
     else:
-        current_labels = pd.read_csv(
-            labelfile, sep=sep, index_col=index_col).loc[:, class_label]
+        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[
+            :, class_label
+        ]
 
     if split:
         # Make stratified split on labels
@@ -527,17 +532,17 @@ def generate_single_dataset(
             current_labels,
             stratify=(current_labels if stratify else None),
             test_size=test_prop,
-            random_state=(42 if deterministic else None)
+            random_state=(42 if deterministic else None),
         )
 
         trainsplit, testsplit = train_test_split(
             trainsplit,
             stratify=(trainsplit if stratify else None),
             test_size=test_prop,
-            random_state=(42 if deterministic else None)
+            random_state=(42 if deterministic else None),
         )
 
-    if suffix == '.h5ad':
+    if suffix == ".h5ad":
         data = an.read_h5ad(datafile)
         if preprocess and refgenes is not None:
             # Do the entire minibatch preprocessing on the input data
@@ -550,8 +555,7 @@ def generate_single_dataset(
             train, val, test = (
                 AnnDatasetMatrix(
                     # because if we preprocess data becomes a matrix, not an anndata object
-                    matrix=(data[split.index]
-                            if preprocess else data.X[split.index]),
+                    matrix=(data[split.index] if preprocess else data.X[split.index]),
                     labels=split.values,
                     split=split.index,
                     *args,
@@ -569,11 +573,14 @@ def generate_single_dataset(
     else:
         if preprocess:
             raise ValueError(
-                "Cannot preprocess with delimited files. Use h5ad, loom, or h5 intead.")
+                "Cannot preprocess with delimited files. Use h5ad, loom, or h5 intead."
+            )
 
-        if suffix != '.csv' and suffix != '.tsv':
-            print(f'Extension {suffix} not recognized, \
-                interpreting as .csv. To silence this warning, pass in explicit file types.')
+        if suffix != ".csv" and suffix != ".tsv":
+            print(
+                f"Extension {suffix} not recognized, \
+                interpreting as .csv. To silence this warning, pass in explicit file types."
+            )
 
         if split:
             train, val, test = (
@@ -687,8 +694,7 @@ def generate_datasets(
     :rtype: Tuple[Dataset, Dataset]
     """
     if combine and len(datafiles) == 1:
-        raise ValueError(
-            'Cannot combine datasets when number of datafiles == 1.')
+        raise ValueError("Cannot combine datasets when number of datafiles == 1.")
 
     if len(datafiles) == 1:
         return generate_single_dataset(
@@ -733,7 +739,7 @@ def generate_dataloaders(
     collocate: bool = True,
     index_col: str = None,
     test_prop=0.2,
-    sep=',',
+    sep=",",
     subset=None,
     stratify=True,
     batch_size: int = 4,
@@ -762,7 +768,8 @@ def generate_dataloaders(
 
     if not collocate and len(datafiles) > 1:
         warnings.warn(
-            f"collocate={collocate}, so multiple files will return multiple DataLoaders and cannot be trained sequentially with PyTorch-Lightning")
+            f"collocate={collocate}, so multiple files will return multiple DataLoaders and cannot be trained sequentially with PyTorch-Lightning"
+        )
 
     train, val, test = [], [], []
     for datafile, labelfile in zip(datafiles, labelfiles):
@@ -794,8 +801,11 @@ def generate_dataloaders(
 
     if collocate and len(datafiles) > 1:
         # Join these together into sequential loader if requested, shouldn't error if only one training file passed, though
-        train, val, test = SequentialLoader(
-            train), SequentialLoader(val), SequentialLoader(test)
+        train, val, test = (
+            SequentialLoader(train),
+            SequentialLoader(val),
+            SequentialLoader(test),
+        )
 
     return train, val, test
 
@@ -803,7 +813,7 @@ def generate_dataloaders(
 def compute_class_weights(
     labelfiles: List[str],
     class_label: str,
-    sep: str = ',',
+    sep: str = ",",
     device: str = None,
 ) -> torch.Tensor:
     """
@@ -818,18 +828,14 @@ def compute_class_weights(
     """
     comb = []
     for file in labelfiles:
-        comb.extend(
-            pd.read_csv(file, sep=sep).loc[:, class_label].values
-        )
+        comb.extend(pd.read_csv(file, sep=sep).loc[:, class_label].values)
 
     weights = torch.from_numpy(
         compute_class_weight(
             classes=np.unique(comb),
             y=comb,
-            class_weight='balanced',
+            class_weight="balanced",
         )
     ).float()
 
-    return (
-        weights.to(device) if device is not None else weights
-    )
+    return weights.to(device) if device is not None else weights

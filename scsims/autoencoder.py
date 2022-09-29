@@ -7,12 +7,17 @@ from scipy.sparse import issparse
 import numpy as np
 
 class Encoder(nn.Module):
-    def __init__(self, input_dim, output_dim=250, layers=None) -> None:
+    def __init__(
+        self, 
+        input_dim,
+        output_dim,
+        layers=None,
+    ) -> None:
         super().__init__()
 
         self.input_dim = input_dim
         self.output_dim = output_dim
-        if output_dim > 500:
+        if output_dim > 500 and layers is None:
             warnings.warn(
                 "Output_dim < 500, final layer has increasing dimensionality in Encoder")
 
@@ -36,7 +41,7 @@ class Decoder(nn.Module):
     def __init__(
         self,
         output_dim,
-        input_dim=250,
+        input_dim,
         layers=None,
     ) -> None:
         super().__init__()
@@ -44,7 +49,7 @@ class Decoder(nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
 
-        if output_dim < 10000:
+        if output_dim < 10000 and layers is None:
             warnings.warn(
                 f"Output_dim < 10000 ({output_dim, input_dim}) in Decoder")
 

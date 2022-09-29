@@ -14,18 +14,22 @@ RUN sudo apt-get --allow-releaseinfo-change update && \
 
 RUN curl -L https://bit.ly/glances | /bin/bash
 
-RUN conda install --yes boto3 tenacity pandas numpy pip plotly scipy && \
-    conda install -c conda-forge python-kaleido
+RUN pip install matplotlib \
+    seaborn \
+    pytorch-lightning \
+    comet_ml \
+    wandb \
+    pytorch-tabnet \
+    scanpy \
+    anndata \
+    sklearn \
+    boto3 \ 
+    tenacity \ 
+    pandas \
+    plotly \
+    scipy
 
-RUN pip install matplotlib
-RUN pip install seaborn
-RUN pip install pytorch-lightning
-RUN pip install comet_ml
-RUN pip install wandb
-RUN pip install pytorch-tabnet
-RUN pip install scanpy
-RUN pip install anndata
-RUN pip install sklearn
+RUN pip install git+https://github.com/jlehrer1/sims
 
 # Is this breaking everything
 # RUN pip install scvi-tools

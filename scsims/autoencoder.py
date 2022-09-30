@@ -160,20 +160,3 @@ class AutoEncoder(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         return self._step("test_loss", batch)
-
-
-class AEDataset(Dataset):
-    def __init__(self, matrix) -> None:
-        super().__init__()
-        self.matrix = np.asarray(matrix.todense()) if issparse(matrix) else matrix
-
-    def __getitem__(self, idx):
-        if isinstance(idx, slice):
-            it = list(range(idx.start or 0, idx.stop or len(self), idx.step or 1))
-            return [self[i] for i in it]
-
-        data = self.matrix[idx]
-        return torch.from_numpy(data)
-
-    def __len__(self):
-        return self.matrix.shape[0]

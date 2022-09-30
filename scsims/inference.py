@@ -91,135 +91,20 @@ class TestDelimitedDataset(Dataset):
         return (self.__len__(), len(self.features))
 
 
-class TestMatrixDataset(Dataset):
-    def __init__(
-        self,
-        matrix: np.ndarray,
-        indices: Collection[int] = None,
-    ) -> None:
+class MatrixDatasetWithoutLabels(Dataset):
+    def __init__(self, matrix, transforms=None) -> None:
         super().__init__()
-        self.data = matrix if indices is None else matrix[indices, :]
+        self.matrix = np.asarray(matrix.todense()) if issparse(matrix) else matrix
+        self.transforms = transforms
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
-            step = 1 if idx.step is None else idx.step
-            idxs = range(idx.start, idx.stop, step)
-            return [self[i] for i in idxs]
+            it = list(range(idx.start or 0, idx.stop or len(self), idx.step or 1))
+            return [self[i] for i in it]
 
-        data = self.data[idx, :]
-
-        if issparse(data):
-            data = data.todense()
-            # Need to get first row of 1xp matrix, weirdly this is how to do it :shrug:
-            data = np.squeeze(np.asarray(data))
-
-        return torch.from_numpy(data)
+        data = self.matrix[idx]
+        data = torch.from_numpy(data)
+        return data if self.transforms is None else self.transforms(data)
 
     def __len__(self):
-        return (
-            # sparse matrices dont have len :shrug:
-            self.data.shape[0]
-            if issparse(self.data)
-            else len(self.data)
-        )
-
-    @property
-    def shape(self):
-        return self.data.shape
-
-
-def generate_single_test_loader(
-    datafile: str,
-    sep: str = ",",
-    *args,
-    **kwargs,
-):
-    dataset = generate_single_test_dataset(
-        datafile,
-        sep,
-        *args,
-        **kwargs,
-    )
-
-    return CollateLoader(dataset=dataset, *args, **kwargs)
-
-
-def generate_test_loaders(
-    datafiles: List[str],
-    labelfiles: List[str],
-    class_label: str,
-    index_col: str,
-    sep: str,
-    *args,
-    **kwargs,
-) -> SequentialLoader:
-
-    loaders = []
-    for datafile, labelfile in zip(datafiles, labelfiles):
-        dataset = generate_single_test_dataset(
-            datafile,
-            labelfile,
-            class_label,
-            index_col,
-            sep,
-            *args,
-            **kwargs,
-        )
-
-        loaders.append(
-            CollateLoader(
-                dataset=dataset,
-                *args,
-                **kwargs,
-            )
-        )
-
-    return SequentialLoader(loaders)
-
-
-def generate_single_test_dataset(
-    datafile: str,
-    labelfile: str,
-    class_label: str,
-    index_col: str,
-    sep: str = ",",
-    *args,
-    **kwargs,
-) -> Union[TestDelimitedData, TestAnndatasetMatrix]:
-    """
-    Generate a single dataset without any splitting, if we want to run prediction at inference time
-
-    :param datafiles: List of absolute paths to csv files under data_path/ that define cell x expression matrices
-    :type datafiles: List[str]
-    :param labelfiles: ist of absolute paths to csv files under data_path/ that define cell x class matrices
-    :type labelfiles: List[str]
-    :param class_label: Column in label files to train on. Must exist in all datasets, this should throw a natural error if it does not.
-    :type class_label: str
-    :raises ValueError: Errors if user requests to combine datasets but there is only one. This is probability misinformed and should raise an error.
-    :return: Training, validation and test datasets, respectively
-    :rtype: Tuple[GeneExpressionData, AnnDatasetFile, AnnDatasetMatrix]
-    """
-
-    suffix = pathlib.Path(datafile).suffix
-
-    if suffix == ".h5ad":
-        data = sc.read_h5ad(datafile)
-        dataset = TestAnndatasetMatrix(
-            matrix=data.X,
-            *args,
-            **kwargs,
-        )
-    else:
-        if suffix != ".csv" and suffix != ".tsv":
-            print(
-                f"Extension {suffix} not recognized, interpreting as .csv. To silence this warning, pass in explicit file types."
-            )
-
-        dataset = TestDelimitedData(
-            filename=datafile,
-            sep=sep,
-            *args,
-            **kwargs,
-        )
-
-    return dataset
+        return self.matrix.shape[0]

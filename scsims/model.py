@@ -13,19 +13,13 @@ import pandas as pd
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-import torchmetrics
 from pytorch_tabnet.tab_network import TabNet
 from pytorch_tabnet.utils import ComplexEncoder, create_explain_matrix
 from scipy.sparse import csc_matrix
-from torchmetrics.functional import (
-    accuracy,
-    auroc,
-    f1_score,
-    precision,
-    recall,
-    specificity,
-)
-from torchmetrics.functional.classification.stat_scores import _stat_scores_update
+from torchmetrics.functional import (accuracy, auroc, f1_score, precision,
+                                     recall, specificity)
+from torchmetrics.functional.classification.stat_scores import \
+    _stat_scores_update
 from tqdm import tqdm
 
 

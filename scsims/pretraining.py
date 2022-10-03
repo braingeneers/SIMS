@@ -1,22 +1,13 @@
-import os
-import sys
 from typing import *
 
 import numpy as np
-import pandas as pd
 import pytorch_lightning as pl
 import torch
-from pytorch_tabnet.tab_network import (
-    EmbeddingGenerator,
-    RandomObfuscator,
-    TabNetDecoder,
-    TabNetEncoder,
-)
+from pytorch_tabnet.tab_network import (EmbeddingGenerator, RandomObfuscator,
+                                        TabNetDecoder, TabNetEncoder)
+
 
 # ALL THIS IS FLATTENING THE API FROM https://github.com/dreamquark-ai/tabnet
-# GIVE MASSIVE CREDIT
-
-
 class NoiseObfuscator(torch.nn.Module):
     def __init__(
         self,

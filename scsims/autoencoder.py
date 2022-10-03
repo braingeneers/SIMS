@@ -20,9 +20,6 @@ class Encoder(nn.Module):
 
         self.input_dim = input_dim
         self.output_dim = output_dim
-        if output_dim > 500 and layers is None:
-            warnings.warn("Output_dim < 500, final layer has increasing dimensionality in Encoder")
-
         self.encode = (
             layers
             if layers is not None
@@ -57,10 +54,6 @@ class Decoder(nn.Module):
 
         self.input_dim = input_dim
         self.output_dim = output_dim
-
-        if output_dim < 10000 and layers is None:
-            warnings.warn(f"Output_dim < 10000 ({output_dim, input_dim}) in Decoder")
-
         self.decode = (
             layers
             if layers is not None

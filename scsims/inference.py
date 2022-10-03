@@ -1,19 +1,15 @@
 import linecache
-import pathlib
 from functools import cached_property
-from typing import Any, Collection, List
+from typing import Any, List
 
 import numpy as np
 import pandas as pd
-import scanpy as sc
 import torch
 from scipy.sparse import issparse
 from torch.utils.data import Dataset
 
-from .data import *
 
-
-class TestDelimitedDataset(Dataset):
+class MatrixDatasetWithLabelsFile(Dataset):
     def __init__(
         self,
         datafile: str,

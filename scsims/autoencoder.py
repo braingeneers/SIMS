@@ -9,11 +9,14 @@ import torch.nn as nn
 class Encoder(nn.Module):
     def __init__(
         self,
-        input_dim,
-        output_dim,
+        input_dim=None,
+        output_dim=None,
         layers=None,
     ) -> None:
         super().__init__()
+
+        if all((input_dim, output_dim, layers)) == None:
+            raise ValueError("If layers aren't specified, input and output dimensions must be")
 
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -43,11 +46,14 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(
         self,
-        output_dim,
-        input_dim,
+        output_dim=None,
+        input_dim=None,
         layers=None,
     ) -> None:
         super().__init__()
+
+        if all((output_dim, input_dim, layers)) == None:
+            raise ValueError("If layers aren't specified, output_dim and input_dim must be.")
 
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -78,7 +84,7 @@ class Decoder(nn.Module):
 class AutoEncoder(pl.LightningModule):
     def __init__(
         self,
-        data_shape,
+        data_shape=None,
         encoder_layers=None,
         decoder_layers=None,
         optim_params=None,

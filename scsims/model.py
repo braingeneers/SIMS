@@ -366,30 +366,6 @@ class SIMSClassifier(pl.LightningModule):
                 # update only common layers
                 update_state_dict[new_param] = weights
 
-    def _from_pretrained(self, **kwargs):
-        update_list = [
-            "cat_dims",
-            "cat_emb_dim",
-            "cat_idxs",
-            "input_dim",
-            "mask_type",
-            "n_a",
-            "n_d",
-            "n_independent",
-            "n_shared",
-            "n_steps",
-        ]
-        for var_name, value in kwargs.items():
-            if var_name in update_list:
-                try:
-                    exec(f"global previous_val; previous_val = self.{var_name}")
-                    if previous_val != value:  # noqa
-                        wrn_msg = f"Pretraining: {var_name} changed from {previous_val} to {value}"  # noqa
-                        warnings.warn(wrn_msg)
-                        exec(f"self.{var_name} = value")
-                except AttributeError:
-                    exec(f"self.{var_name} = value")
-
     def predict(self, loader):
         preds = []
         labels = []
@@ -401,12 +377,17 @@ class SIMSClassifier(pl.LightningModule):
             else:
                 data = X
 
-            res, _ = self.network(data)
-            res = np.argmax(res.detach(), axis=1)
-            preds.extend(res.numpy())
+            res, _ = self(data)
+            _, top_preds = res.topk(3, axis=1) # to get indices
+            preds.extend(top_preds.numpy())
 
-        final = pd.DataFrame()
-        final["predicted_label"] = preds
+        final = pd.DataFrame(preds)
+        final = final.rename({
+            0: 'first_prob',
+            1: 'second_prob',
+            2: 'third_prob',
+        }, axis=1)
+        
 
         if labels != []:
             final["actual_label"] = labels
@@ -453,3 +434,45 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
     }
 
     return metrics
+
+# class UploadCallback(pl.callbacks.Callback):
+#     """Custom PyTorch callback for uploading model checkpoints to the braingeneers S3 bucket.
+
+#     Parameters:
+#     path: Local path to folder where model checkpoints are saved
+#     desc: Description of checkpoint that is appended to checkpoint file name on save
+#     upload_path: Subpath in braingeneersdev/jlehrer/ to upload model checkpoints to
+#     """
+
+#     def __init__(
+#         self,
+#         path: str,
+#         desc: str,
+#         bucket: str,
+#         remote_path: str,
+#         epochs: int = 10,
+#     ) -> None:
+#         """_summary_
+
+#         :param path: Local path to save model checkpoints to
+#         :param desc: Name of saved model checkpoints, will be checkpoint-{epoch}-desc-{desc}
+#         :param bucket: S3 bucket to upload to
+#         :param remote_path: Key in s3 bucket to upload to
+#         :param epochs: Number of epochs to skip before saving model, defaults to 10
+#         """
+#         super().__init__()
+#         self.path = path
+#         self.desc = desc
+#         self.epochs = epochs
+#         self.remote_path = remote_path
+#         self.bucket = bucket
+
+#     def on_train_epoch_end(self, trainer, pl_module):
+#         epoch = trainer.current_epoch
+
+#         if epoch % self.epochs == 0 and epoch > 0:  # Save every ten epochs
+#             checkpoint = f"checkpoint-{epoch}-desc-{self.desc}.ckpt"
+#             trainer.save_checkpoint(os.path.join(self.path, checkpoint))
+#             print(f"Uploading checkpoint at epoch {epoch}")
+
+#             upload(bucket_name=self.bucket, file_name=os.path.join(self.path, checkpoint), remote_name=os.path.join(self.remote_path, checkpoint))

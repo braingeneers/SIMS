@@ -51,6 +51,7 @@ class SIMSClassifier(pl.LightningModule):
         no_explain: bool = False,
     ) -> None:
         super().__init__()
+        self.save_hyperparameters()
 
         # Stuff needed for training
         self.input_dim = input_dim
@@ -116,6 +117,8 @@ class SIMSClassifier(pl.LightningModule):
                 self.network.cat_idxs,
                 self.network.post_embed_dim,
             )
+
+        
 
     def forward(self, x):
         return self.network(x)
@@ -226,10 +229,12 @@ class SIMSClassifier(pl.LightningModule):
             optimizer = optimizer(self.parameters(), **self.optim_params)
         else:
             optimizer = torch.optim.Adam(self.parameters(), lr=0.2, weight_decay=1e-5)
+        print(f'Initializing with {optimizer = }')
 
         if self.scheduler_params is not None:
             scheduler = self.scheduler_params.pop("scheduler")
             scheduler = scheduler(optimizer, **self.scheduler_params)
+            print(f'Initializating with {scheduler = }')
 
         if self.scheduler_params is None:
             return optimizer
@@ -369,17 +374,20 @@ class SIMSClassifier(pl.LightningModule):
     def predict(self, loader):
         preds = []
         labels = []
-        for X in tqdm(loader):
-            # Some dataloaders will have labels, handle this case
-            if len(X) == 2:
-                data, label = X
-                labels.extend(label.numpy())
-            else:
-                data = X
+        prev_network_state = self.network.training
+        self.network.eval()
+        with torch.no_grad():
+            for X in tqdm(loader):
+                # Some dataloaders will have labels, handle this case
+                if len(X) == 2:
+                    data, label = X
+                    labels.extend(label.numpy())
+                else:
+                    data = X
 
-            res, _ = self(data)
-            _, top_preds = res.topk(3, axis=1) # to get indices
-            preds.extend(top_preds.numpy())
+                res, _ = self(data)
+                _, top_preds = res.topk(3, axis=1) # to get indices
+                preds.extend(top_preds.numpy())
 
         final = pd.DataFrame(preds)
         final = final.rename({
@@ -391,6 +399,10 @@ class SIMSClassifier(pl.LightningModule):
 
         if labels != []:
             final["actual_label"] = labels
+
+        # if network was in training mode before inference, set it back to that 
+        if prev_network_state:
+            self.network.train()
 
         return final
 

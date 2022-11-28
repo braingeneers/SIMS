@@ -118,8 +118,6 @@ class SIMSClassifier(pl.LightningModule):
                 self.network.post_embed_dim,
             )
 
-        
-
     def forward(self, x):
         return self.network(x)
 

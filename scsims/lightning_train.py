@@ -114,16 +114,25 @@ class DataModule(pl.LightningDataModule):
         self.args = args
         self.kwargs = kwargs
 
-    def prepare_data(self):
-        if self.urls is not None:
-            download_raw_expression_matrices(
-                self.urls,
-                unzip=self.unzip,
-                sep=self.sep,
-                datapath=self.datapath,
-            )
+        self.prepared = False 
+        self.setuped = False 
 
-        self._encode_labels()
+        self.prepare_data()
+        self.setup()
+
+
+    def prepare_data(self):
+        if not self.prepared:
+            if self.urls is not None:
+                download_raw_expression_matrices(
+                    self.urls,
+                    unzip=self.unzip,
+                    sep=self.sep,
+                    datapath=self.datapath,
+                )
+
+            self._encode_labels()
+            self.prepared = True
 
     def _encode_labels(self):
         unique_targets = np.array(
@@ -151,34 +160,37 @@ class DataModule(pl.LightningDataModule):
                     labels.to_csv(file, index=False, sep=self.sep)
 
     def setup(self, stage: Optional[str] = None):
-        if self.split:
-            print("Creating train/val/test DataLoaders...")
-            trainloader, valloader, testloader = generate_dataloaders(
-                datafiles=self.datafiles,
+        if not self.setuped:
+            if self.split:
+                print("Creating train/val/test DataLoaders...")
+                trainloader, valloader, testloader = generate_dataloaders(
+                    datafiles=self.datafiles,
+                    labelfiles=self.labelfiles,
+                    class_label=self.class_label,
+                    sep=self.sep,
+                    batch_size=self.batch_size,
+                    num_workers=self.num_workers,
+                    pin_memory=True,  # For gpu training
+                    *self.args,
+                    **self.kwargs,
+                )
+
+                print("Done, continuing to training.")
+                self.trainloader = trainloader
+                self.valloader = valloader
+                self.testloader = testloader
+            else:
+                pass
+
+            print("Calculating weights")
+            self.weights = compute_class_weights(
                 labelfiles=self.labelfiles,
                 class_label=self.class_label,
                 sep=self.sep,
-                batch_size=self.batch_size,
-                num_workers=self.num_workers,
-                pin_memory=True,  # For gpu training
-                *self.args,
-                **self.kwargs,
+                device=self.device,
             )
 
-            print("Done, continuing to training.")
-            self.trainloader = trainloader
-            self.valloader = valloader
-            self.testloader = testloader
-        else:
-            pass
-
-        print("Calculating weights")
-        self.weights = compute_class_weights(
-            labelfiles=self.labelfiles,
-            class_label=self.class_label,
-            sep=self.sep,
-            device=self.device,
-        )
+            self.setuped = True
 
     def train_dataloader(self):
         return self.trainloader

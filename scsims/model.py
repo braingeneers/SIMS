@@ -16,11 +16,11 @@ import torch.nn.functional as F
 from pytorch_tabnet.tab_network import TabNet
 from pytorch_tabnet.utils import ComplexEncoder, create_explain_matrix
 from scipy.sparse import csc_matrix
-from torchmetrics.functional import (accuracy, auroc, f1_score, precision,
-                                     recall, specificity)
-from torchmetrics.functional.classification.stat_scores import \
-    _stat_scores_update
+from torchmetrics.functional import accuracy, auroc, f1_score, precision, recall, specificity
+from torchmetrics.functional.classification.stat_scores import _stat_scores_update
 from tqdm import tqdm
+from scsims.inference import MatrixDatasetWithoutLabels
+from scsims.data import CollateLoader
 
 
 class SIMSClassifier(pl.LightningModule):
@@ -226,13 +226,13 @@ class SIMSClassifier(pl.LightningModule):
             optimizer = self.optim_params.pop("optimizer")
             optimizer = optimizer(self.parameters(), **self.optim_params)
         else:
-            optimizer = torch.optim.Adam(self.parameters(), lr=0.2, weight_decay=1e-5)
-        print(f'Initializing with {optimizer = }')
+            optimizer = torch.optim.Adam(self.parameters(), **self.optim_params)
+        print(f"Initializing with {optimizer = }")
 
         if self.scheduler_params is not None:
             scheduler = self.scheduler_params.pop("scheduler")
             scheduler = scheduler(optimizer, **self.scheduler_params)
-            print(f'Initializating with {scheduler = }')
+            print(f"Initializating with {scheduler = }")
 
         if self.scheduler_params is None:
             return optimizer
@@ -369,7 +369,22 @@ class SIMSClassifier(pl.LightningModule):
                 # update only common layers
                 update_state_dict[new_param] = weights
 
-    def predict(self, loader):
+    def predict(self, anndata, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+        """Does inference on data
+
+        :param anndata: Anndata object to do inference on
+        """
+        dataset = MatrixDatasetWithoutLabels(anndata.X[rows, :] if rows is not None else anndata.X)
+
+        loader = CollateLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            currgenes=currgenes,
+            refgenes=refgenes,
+            **kwargs,
+        )
+
         preds = []
         labels = []
         prev_network_state = self.network.training
@@ -384,21 +399,27 @@ class SIMSClassifier(pl.LightningModule):
                     data = X
 
                 res, _ = self(data)
-                _, top_preds = res.topk(3, axis=1) # to get indices
+                _, top_preds = res.topk(3, axis=1)  # to get indices
                 preds.extend(top_preds.numpy())
 
         final = pd.DataFrame(preds)
-        final = final.rename({
-            0: 'first_prob',
-            1: 'second_prob',
-            2: 'third_prob',
-        }, axis=1)
-        
+        final = final.rename(
+            {
+                0: "first_prob",
+                1: "second_prob",
+                2: "third_prob",
+            },
+            axis=1,
+        )
+
+        if hasattr(self, "datamodule") and hasattr(self.datamodule, "label_encoder"):
+            encoder = self.datamodule.label_encoder
+            final = final.apply(lambda x: encoder.inverse_transform(x), axis=1)
 
         if labels != []:
             final["actual_label"] = labels
 
-        # if network was in training mode before inference, set it back to that 
+        # if network was in training mode before inference, set it back to that
         if prev_network_state:
             self.network.train()
 
@@ -444,6 +465,7 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
     }
 
     return metrics
+
 
 # class UploadCallback(pl.callbacks.Callback):
 #     """Custom PyTorch callback for uploading model checkpoints to the braingeneers S3 bucket.

@@ -120,7 +120,6 @@ class DataModule(pl.LightningDataModule):
         self.prepare_data()
         self.setup()
 
-
     def prepare_data(self):
         if not self.prepared:
             if self.urls is not None:

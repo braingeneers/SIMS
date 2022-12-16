@@ -243,7 +243,18 @@ class SIMSClassifier(pl.LightningModule):
             "monitor": "train_loss",
         }
 
-    def explain(self, loader, cache=False, normalize=False):
+    def explain(self, anndata, rows=None, batch_size=4, num_workers=0, currgenes=None, refgenes=None, cache=False, normalize=False, **kwargs):
+        dataset = MatrixDatasetWithoutLabels(anndata.X[rows, :] if rows is not None else anndata.X)
+
+        loader = CollateLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            currgenes=currgenes,
+            refgenes=refgenes,
+            **kwargs,
+        )
+
         if cache and self._explain_matrix is not None:
             return self._explain_matrix
 

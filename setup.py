@@ -35,7 +35,7 @@ README = (HERE / "README.md").read_text()
 setup(
     author="Julian Lehrer",
     author_email="jmlehrer@ucsc.edu",
-    python_requires=">=3.6",
+    python_requires=">=3.9",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",

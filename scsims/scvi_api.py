@@ -7,8 +7,8 @@ import pandas as pd
 import pytorch_lightning as pl
 import torch
 
-from .lightning_train import DataModule
-from .model import SIMSClassifier
+from scsims.lightning_train import DataModule
+from scsims.model import SIMSClassifier
 
 here = pathlib.Path(__file__).parent.absolute()
 

@@ -4,7 +4,7 @@ import urllib
 import warnings
 from functools import cached_property
 from os.path import join
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import anndata as an
 import numpy as np
@@ -24,8 +24,8 @@ class DataModule(pl.LightningDataModule):
     def __init__(
         self,
         class_label: str,
-        datafiles: List[str] = None,
-        labelfiles: List[str] = None,
+        datafiles: Union[List[str], an.AnnData] = None,
+        labelfiles: Union[List[str], an.AnnData] = None,
         urls: Dict[str, List[str]] = None,
         sep: str = None,
         unzip: bool = True,

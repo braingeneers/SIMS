@@ -233,7 +233,7 @@ class AnnDatasetMatrix(Dataset):
             data = np.squeeze(np.asarray(data))
 
         return (torch.from_numpy(data), self.labels[idx])
-
+ 
     def __len__(self):
         return self.data.shape[0] if issparse(self.data) else len(self.data)
 
@@ -454,8 +454,8 @@ def clean_sample(
 
 
 def generate_single_dataset(
-    datafile: str,
-    labelfile: str,
+    datafile: Union[str, an.AnnData],
+    labelfile: Union[str, an.AnnData],
     class_label: str,
     index_col: str,
     split: bool = True,
@@ -485,12 +485,26 @@ def generate_single_dataset(
     :rtype: Tuple[Dataset, Dataset, Dataset]
     """
 
-    suffix = pathlib.Path(datafile).suffix
+    
     if subset is not None:
         current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[subset, :]
         current_labels = current_labels.loc[:, class_label]
     else:
         current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[:, class_label]
+
+    if isinstance(datafile, an.AnnData):
+        data = datafile
+    else:
+        suffix = pathlib.Path(datafile).suffix
+        if suffix == ".h5ad":
+            data = an.read_h5ad(datafile)
+    if preprocess and refgenes is not None:
+        # Do the entire minibatch preprocessing on the input data
+        data = clean_sample(
+            sample=data.X,
+            refgenes=refgenes,
+            currgenes=currgenes,
+        )
 
     if split:
         # Make stratified split on labels
@@ -508,75 +522,32 @@ def generate_single_dataset(
             random_state=(42 if deterministic else None),
         )
 
-    if suffix == ".h5ad":
-        data = an.read_h5ad(datafile)
-        if preprocess and refgenes is not None:
-            # Do the entire minibatch preprocessing on the input data
-            data = clean_sample(
-                sample=data.X,
-                refgenes=refgenes,
-                currgenes=currgenes,
-            )
-        if split:
-            train, val, test = (
-                AnnDatasetMatrix(
-                    # because if we preprocess data becomes a matrix, not an anndata object
-                    matrix=(data[split.index] if preprocess else data.X[split.index]),
-                    labels=split.values,
-                    split=split.index,
-                    *args,
-                    **kwargs,
-                )
-                for split in [trainsplit, valsplit, testsplit]
-            )
-        else:
-            train = AnnDatasetMatrix(
-                matrix=(data if preprocess else data.X),
-                labels=current_labels.values,
+    if split:
+        train, val, test = (
+            AnnDatasetMatrix(
+                # because if we preprocess data becomes a matrix, not an anndata object
+                matrix=(data[split.index] if preprocess else data.X[split.index]),
+                labels=split.values,
+                split=split.index,
                 *args,
                 **kwargs,
             )
+            for split in [trainsplit, valsplit, testsplit]
+        )
     else:
-        if preprocess:
-            raise ValueError("Cannot preprocess with delimited files. Use h5ad, loom, or h5 intead.")
-
-        if suffix != ".csv" and suffix != ".tsv":
-            print(
-                f"Extension {suffix} not recognized, \
-                interpreting as .csv. To silence this warning, pass in explicit file types."
-            )
-
-        if split:
-            train, val, test = (
-                DelimitedDataset(
-                    filename=datafile,
-                    labelname=labelfile,
-                    class_label=class_label,
-                    indices=indices,
-                    index_col=index_col,
-                    sep=sep,
-                    *args,
-                    **kwargs,
-                )
-                for indices in [trainsplit.index, valsplit.index, testsplit.index]
-            )
-        else:
-            train = DelimitedDataset(
-                labelname=labelfile,
-                class_label=class_label,
-                index_col=index_col,
-                indices=subset,
-                sep=sep,
-                *args,
-                **kwargs,
-            )
+        train = AnnDatasetMatrix(
+            matrix=(data if preprocess else data.X),
+            labels=current_labels.values,
+            *args,
+            **kwargs,
+        )
 
     return (train, val, test) if split else train
 
 
 def generate_single_dataloader(
-    datafile: str,
-    labelfile: str,
+    datafile: Union[str, an.AnnData],
+    labelfile: Union[str, an.AnnData],
     class_label: str,
     index_col: str,
     test_prop: float,
@@ -630,75 +601,9 @@ def generate_single_dataloader(
     return loaders
 
 
-def generate_datasets(
-    datafiles: List[str],
-    labelfiles: List[str],
-    class_label: str,
-    test_prop: float = 0.2,
-    combine=False,
-    *args,
-    **kwargs,
-) -> Tuple[Dataset, Dataset]:
-    """
-    Generates the COMBINED train/val/test datasets with stratified label splitting.
-    This means that the proportion of each label is the same in the training, validation and test set.
-
-    :param datafiles: List of absolute paths to csv files under data_path/ that define cell x expression matrices
-    :type datafiles: List[str]
-    :param labelfiles: ist of absolute paths to csv files under data_path/ that define cell x class matrices
-    :type labelfiles: List[str]
-    :param class_label: Column in label files to train on. Must exist in all datasets, this should throw a natural error if it does not.
-    :type class_label: str
-    :param test_prop: Proportion of data to use as test set , defaults to 0.2
-    :type test_prop: float, optional
-    :param combine: Whether to join Datasets into ConcatDataset, defaults to False
-    :type combine: bool, optional
-    :raises ValueError: Errors if user requests to combine datasets but there is only one. This is probability misinformed and should raise an error.
-    :return: Training, validation and test datasets, respectively
-    :rtype: Tuple[Dataset, Dataset]
-    """
-    if combine and len(datafiles) == 1:
-        raise ValueError("Cannot combine datasets when number of datafiles == 1.")
-
-    if len(datafiles) == 1:
-        return generate_single_dataset(
-            datafiles[0],
-            labelfiles[0],
-            class_label,
-            test_prop,
-            *args,
-            **kwargs,
-        )
-
-    train_datasets, val_datasets, test_datasets = [], [], []
-
-    for datafile, labelfile in zip(datafiles, labelfiles):
-        train, val, test = generate_single_dataset(
-            datafile,
-            labelfile,
-            class_label,
-            test_prop,
-            *args,
-            **kwargs,
-        )
-
-        train_datasets.append(train)
-        val_datasets.append(val)
-        test_datasets.append(test)
-
-    # Flexibility to generate single stratified dataset from a single file
-    # Just in generate_single_dataset
-    if combine:
-        train_datasets = ConcatDataset(train_datasets)
-        val_datasets = ConcatDataset(val_datasets)
-        test_datasets = ConcatDataset(test_datasets)
-
-    return train_datasets, val_datasets, test_datasets
-
-
 def generate_dataloaders(
-    datafiles: List[str],
-    labelfiles: List[str],
+    datafiles: Union[List[str], List[an.AnnData]],
+    labelfiles: Union[List[str], List[an.AnnData]],
     class_label: str,
     collocate: bool = True,
     index_col: str = None,

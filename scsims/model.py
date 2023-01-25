@@ -45,6 +45,8 @@ class SIMSClassifier(pl.LightningModule):
         loss: Callable = None,  # will default to cross_entropy
         pretrained: bool = None,
         no_explain: bool = False,
+        *args,
+        **kwargs,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()

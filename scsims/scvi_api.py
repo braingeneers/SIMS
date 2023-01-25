@@ -37,21 +37,18 @@ class SIMS:
             setattr(self, att, value)
 
     def setup_model(self, *args, **kwargs):
-        self.model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
+        self._model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
 
     def setup_trainer(self, *args, **kwargs):
-        self.trainer = pl.Trainer(
-            *args,
-            **kwargs,
-        )
+        self._trainer = pl.Trainer(*args, **kwargs)
 
     def train(self, *args, **kwargs):
-        if not hasattr(self, "trainer"):
-            self.setup_trainer()
-        if not hasattr(self, "model"):
-            self.setup_model()
+        if not hasattr(self, "_trainer"):
+            self.setup_trainer(*args, **kwargs)
+        if not hasattr(self, "_model"):
+            self.setup_model(*args, **kwargs)
 
-        self.trainer.fit(self.model, datamodule=self.datamodule)
+        self._trainer.fit(self.model, datamodule=self.datamodule)
 
     def predict(self, adata: an.AnnData, *args, **kwargs):
         results = self.model.predict(adata, *args, **kwargs)

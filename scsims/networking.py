@@ -1,39 +1,8 @@
 import os
-import pathlib
 from typing import *
 
 import boto3
 import pytorch_lightning as pl
-
-here = pathlib.Path(__file__).parent.absolute()
-data_path = os.path.join(here, "data")
-
-with open(os.path.join(here, "credentials")) as f:
-    key, access = [line.rstrip() for line in f.readlines()]
-
-s3 = boto3.resource(
-    "s3",
-    endpoint_url="https://s3-west.nrp-nautilus.io/",
-    aws_access_key_id=key,
-    aws_secret_access_key=access,
-)
-
-
-def upload(file_name, remote_name=None) -> None:
-    """
-    Uploads a file to the braingeneersdev S3 bucket
-
-    Parameters:
-    file_name: Local file to upload
-    remote_name: Key for S3 bucket. Default is file_name
-    """
-    if remote_name == None:
-        remote_name = file_name
-
-    s3.Bucket("braingeneersdev").upload_file(
-        Filename=file_name,
-        Key=remote_name,
-    )
 
 
 class UploadCallback(pl.callbacks.Callback):
@@ -42,34 +11,50 @@ class UploadCallback(pl.callbacks.Callback):
     Parameters:
     path: Local path to folder where model checkpoints are saved
     desc: Description of checkpoint that is appended to checkpoint file name on save
-    upload_path: Subpath in braingeneersdev/jlehrer/ to upload model checkpoints to
+    upload_prefix: Path in bucket/ to upload model checkpoints to, defaults to model_checkpoints
     """
 
     def __init__(
         self,
         path: str,
         desc: str,
-        upload_path="model_checkpoints",
-        epochs: int = 10,
+        s3: boto3.resource, 
+        bucket: str,
+        upload_prefix="model_checkpoints",
+        n_epochs: int = 10,
+        quiet: bool = False,
     ) -> None:
         super().__init__()
         self.path = path
         self.desc = desc
-        self.upload_path = upload_path
-        self.epochs = epochs
+
+        self.s3 = s3 
+        self.bucket = bucket 
+        self.upload_prefix = upload_prefix
+        self.epochs = n_epochs
+        self.quiet = quiet
 
     def on_train_epoch_end(self, trainer, pl_module):
         epoch = trainer.current_epoch
 
         if epoch % self.epochs == 0 and epoch > 0:  # Save every ten epochs
             checkpoint = f"checkpoint-{epoch}-desc-{self.desc}.ckpt"
-            trainer.save_checkpoint(os.path.join(self.path, checkpoint))
-            print(f"Uploading checkpoint at epoch {epoch}")
+            checkpoint_path = os.path.join(self.path, checkpoint)
+
+            if not self.quiet:
+                print(f"Saving checkpoint on epoch {epoch} to {checkpoint_path}")
+
+            trainer.save_checkpoint(checkpoint_path)
+
+            if not self.quiet:
+                print(f"Uploading checkpoint at epoch {epoch}")
+
             try:
-                upload(
-                    os.path.join(self.path, checkpoint),
-                    os.path.join("jlehrer", self.upload_path, checkpoint),
+                self.s3.Bucket(self.bucket).upload_file(
+                    Filename=checkpoint_path,
+                    Key=os.path.join(self.upload_prefix, checkpoint_path),
                 )
+
             except Exception as e:
                 print(f"Error when uploading on epoch {epoch}")
                 print(e)

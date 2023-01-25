@@ -13,23 +13,13 @@ The data is formated like so:
 A call to generate and train the SIMS model looks like the following:
 
 ```python 
+from pytorch_lightning.loggers import WandbLogger
+from scsims import SIMS
 
-import torch 
-from scsims import generate_trainer
+wandb_logger = WandbLogger(project=f"My Project", name=f"SIMS Model Training") # set up the logger to log data to Weights and Biases
 
-trainer, model, data = generate_trainer(
-    datafiles=['cortical_cells.csv', 'cortical_cells_2.csv', 'external/cortical_cells_3.h5ad'], # Notice we can mix and match file types
-    labelfiles=['l1.csv', 'l2.csv', 'l3.csv'],
-    class_label='cell_state', # Train to predict cell state!
-    batch_size=4,
-    optim_params = {
-        'optimizer': torch.optim.Adam,
-        'lr': lr, 
-        'weight_decay': weight_decay,
-    },
-)
-
-trainer.fit(model, datamodule=data)
+sims = SIMS(adata=adata, labels_key='subclass_label') # set up the base class with anndata object and labels
+sims.train() # Run the training loop
 ```
 
-This will train a derivation of the TabNet model on the given expression matrices with target variable given by the `class_label` column in each label file.
+This will train the TabNet model on the given expression matrices with target variable given by the `class_label` column in each label file.

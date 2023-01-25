@@ -16,11 +16,14 @@ import torch.nn.functional as F
 from pytorch_tabnet.tab_network import TabNet
 from pytorch_tabnet.utils import ComplexEncoder, create_explain_matrix
 from scipy.sparse import csc_matrix
-from torchmetrics.functional import accuracy, auroc, f1_score, precision, recall, specificity
-from torchmetrics.functional.classification.stat_scores import _stat_scores_update
+from torchmetrics.functional import (accuracy, auroc, f1_score, precision,
+                                     recall, specificity)
+from torchmetrics.functional.classification.stat_scores import \
+    _stat_scores_update
 from tqdm import tqdm
-from scsims.inference import MatrixDatasetWithoutLabels
+
 from scsims.data import CollateLoader
+from scsims.inference import MatrixDatasetWithoutLabels
 
 
 class SIMSClassifier(pl.LightningModule):
@@ -243,7 +246,18 @@ class SIMSClassifier(pl.LightningModule):
             "monitor": "train_loss",
         }
 
-    def explain(self, anndata, rows=None, batch_size=4, num_workers=0, currgenes=None, refgenes=None, cache=False, normalize=False, **kwargs):
+    def explain(
+        self,
+        anndata,
+        rows=None,
+        batch_size=4,
+        num_workers=0,
+        currgenes=None,
+        refgenes=None,
+        cache=False,
+        normalize=False,
+        **kwargs,
+    ):
         dataset = MatrixDatasetWithoutLabels(anndata.X[rows, :] if rows is not None else anndata.X)
 
         loader = CollateLoader(

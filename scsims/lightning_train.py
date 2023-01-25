@@ -114,8 +114,8 @@ class DataModule(pl.LightningDataModule):
         self.args = args
         self.kwargs = kwargs
 
-        self.prepared = False 
-        self.setuped = False 
+        self.prepared = False
+        self.setuped = False
 
         self.prepare_data()
         self.setup()
@@ -162,24 +162,32 @@ class DataModule(pl.LightningDataModule):
         if not self.setuped:
             if self.split:
                 print("Creating train/val/test DataLoaders...")
-                trainloader, valloader, testloader = generate_dataloaders(
-                    datafiles=self.datafiles,
-                    labelfiles=self.labelfiles,
-                    class_label=self.class_label,
-                    sep=self.sep,
-                    batch_size=self.batch_size,
-                    num_workers=self.num_workers,
-                    pin_memory=True,  # For gpu training
-                    *self.args,
-                    **self.kwargs,
-                )
+            else:
+                print("Creating single dataloader (under trainloader attribute)")
 
-                print("Done, continuing to training.")
+            loaders = generate_dataloaders(
+                datafiles=self.datafiles,
+                labelfiles=self.labelfiles,
+                class_label=self.class_label,
+                sep=self.sep,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+                pin_memory=True,  # For gpu training
+                split=self.split,
+                *self.args,
+                **self.kwargs,
+            )
+
+            print("Done, continuing to training.")
+            if len(loaders) > 1:
+                trainloader, valloader, testloader = loaders
                 self.trainloader = trainloader
                 self.valloader = valloader
                 self.testloader = testloader
             else:
-                pass
+                self.trainloader = loaders[0]
+                self.valloader = None
+                self.testloader = None
 
             print("Calculating weights")
             self.weights = compute_class_weights(

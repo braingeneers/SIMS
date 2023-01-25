@@ -233,7 +233,7 @@ class AnnDatasetMatrix(Dataset):
             data = np.squeeze(np.asarray(data))
 
         return (torch.from_numpy(data), self.labels[idx])
- 
+
     def __len__(self):
         return self.data.shape[0] if issparse(self.data) else len(self.data)
 
@@ -453,25 +453,27 @@ def clean_sample(
     return sample
 
 
-def generate_single_dataset(
+def generate_split_dataloaders(
     datafile: Union[str, an.AnnData],
     labelfile: Union[str, an.AnnData],
     class_label: str,
     index_col: str,
-    split: bool = True,
-    test_prop: float = 0.2,
-    sep: str = ",",
-    subset: Collection[int] = None,
-    stratify: bool = True,
-    deterministic: bool = False,
+    test_prop: float,
+    sep: str,
+    subset: Collection[Any],
+    stratify: bool,
+    batch_size: int,
+    num_workers: int,
     currgenes: Collection[Any] = None,
     refgenes: Collection[Any] = None,
     preprocess: bool = False,
+    split: bool = True,
+    deterministic: bool = True,
     *args,
     **kwargs,
-) -> Tuple[Dataset, Dataset, Dataset]:
+) -> Union[Tuple[CollateLoader], Tuple[DataLoader]]:
     """
-    Generate a train/test split for the given datafile and labelfile.
+    Generates a train, val, test CollateLoader
 
     :param datafile: Path to dataset csv file
     :type datafile: str
@@ -481,11 +483,10 @@ def generate_single_dataset(
     :type class_label: str
     :param test_prop: Proportion of dataset to use in val/test, defaults to 0.2
     :type test_prop: float, optional
-    :return: train, val, test Datasets
-    :rtype: Tuple[Dataset, Dataset, Dataset]
+    :return: train, val, test loaders
+    :rtype: Tuple[CollateLoader, CollateLoader, CollateLoader]
     """
 
-    
     if subset is not None:
         current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[subset, :]
         current_labels = current_labels.loc[:, class_label]
@@ -522,7 +523,6 @@ def generate_single_dataset(
             random_state=(42 if deterministic else None),
         )
 
-    if split:
         train, val, test = (
             AnnDatasetMatrix(
                 # because if we preprocess data becomes a matrix, not an anndata object
@@ -542,61 +542,31 @@ def generate_single_dataset(
             **kwargs,
         )
 
-    return (train, val, test) if split else train
-
-
-def generate_single_dataloader(
-    datafile: Union[str, an.AnnData],
-    labelfile: Union[str, an.AnnData],
-    class_label: str,
-    index_col: str,
-    test_prop: float,
-    sep: str,
-    subset: Collection[Any],
-    stratify: bool,
-    batch_size: int,
-    num_workers: int,
-    currgenes: Collection[Any] = None,
-    refgenes: Collection[Any] = None,
-    preprocess: bool = False,
-    *args,
-    **kwargs,
-) -> Union[Tuple[CollateLoader], Tuple[DataLoader]]:
-    """
-    Generates a train, val, test CollateLoader
-
-    :return: train, val, test loaders
-    :rtype: Tuple[CollateLoader, CollateLoader, CollateLoader]
-    """
-
-    train, val, test = generate_single_dataset(
-        datafile=datafile,
-        labelfile=labelfile,
-        class_label=class_label,
-        index_col=index_col,
-        test_prop=test_prop,
-        sep=sep,
-        subset=subset,
-        stratify=stratify,
-        currgenes=currgenes,
-        refgenes=refgenes,
-        preprocess=preprocess,
-        *args,
-        **kwargs,
-    )
-
-    loaders = (
-        CollateLoader(
-            dataset=dataset,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            refgenes=(None if preprocess else refgenes),
-            currgenes=(None if preprocess else currgenes),
-            *args,
-            **kwargs,
-        )
-        for dataset in [train, val, test]
-    )
+    if split:
+        loaders = [
+            CollateLoader(
+                dataset=dataset,
+                batch_size=batch_size,
+                num_workers=num_workers,
+                refgenes=(None if preprocess else refgenes),
+                currgenes=(None if preprocess else currgenes),
+                *args,
+                **kwargs,
+            )
+            for dataset in [train, val, test]
+        ]
+    else:
+        loaders = [
+            CollateLoader(
+                dataset=train,
+                batch_size=batch_size,
+                num_workers=num_workers,
+                refgenes=(None if preprocess else refgenes),
+                currgenes=(None if preprocess else currgenes),
+                *args,
+                **kwargs,
+            )
+        ]
 
     return loaders
 
@@ -615,6 +585,7 @@ def generate_dataloaders(
     num_workers: int = 0,
     refgenes: Collection = None,
     currgenes: Collection = None,
+    split: bool = True,
     *args,
     **kwargs,
 ) -> Union[Tuple[CollateLoader, List[CollateLoader]], Tuple[SequentialLoader]]:
@@ -642,7 +613,7 @@ def generate_dataloaders(
 
     train, val, test = [], [], []
     for datafile, labelfile in zip(datafiles, labelfiles):
-        trainloader, valloader, testloader = generate_single_dataloader(
+        loaders = generate_split_dataloaders(
             datafile=datafile,
             labelfile=labelfile,
             class_label=class_label,
@@ -655,28 +626,34 @@ def generate_dataloaders(
             num_workers=num_workers,
             currgenes=currgenes,
             refgenes=refgenes,
+            split=split,
             *args,
             **kwargs,
         )
 
-        train.append(trainloader)
-        val.append(valloader)
-        test.append(testloader)
+        if len(loaders) == 1:  # no split, just 1 dataloader
+            train.append(loaders[0])
+        else:
+            train.append(loaders[0])
+            val.append(loaders[1])
+            test.append(loaders[2])
 
     if len(datafiles) == 1:
         train = train[0]
-        val = val[0]
-        test = test[0]
+        if split:
+            val = val[0]
+            test = test[0]
 
     if collocate and len(datafiles) > 1:
-        # Join these together into sequential loader if requested, shouldn't error if only one training file passed, though
-        train, val, test = (
-            SequentialLoader(train),
-            SequentialLoader(val),
-            SequentialLoader(test),
-        )
+        train = SequentialLoader(train)
+        if split:
+            # Join these together into sequential loader if requested, shouldn't error if only one training file passed, though
+            val, test = (
+                SequentialLoader(val),
+                SequentialLoader(test),
+            )
 
-    return train, val, test
+    return [train, val, test] if split else [train]
 
 
 def compute_class_weights(

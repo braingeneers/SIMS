@@ -7,7 +7,7 @@ import zipfile
 from functools import partial
 from pathlib import Path
 from typing import Callable, Dict
-
+import anndata as an
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
@@ -394,28 +394,33 @@ class SIMSClassifier(pl.LightningModule):
                 # update only common layers
                 update_state_dict[new_param] = weights
 
-    def predict(self, anndata, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+    def predict(self, inference_data, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
         """Does inference on data
 
         :param anndata: Anndata object to do inference on
         """
-        dataset = MatrixDatasetWithoutLabels(anndata.X[rows, :] if rows is not None else anndata.X)
+        if not isinstance(inference_data, (an.AnnData, torch.utils.data.Dataset, torch.utils.data.DataLoader)):
+            raise ValueError(f"inference_data must be an AnnData object, a torch dataset, or a torch dataloader. Got type {type(inference_data)}")
 
-        loader = CollateLoader(
-            dataset=dataset,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            currgenes=currgenes,
-            refgenes=refgenes,
-            **kwargs,
-        )
+        if isinstance(inference_data, an.AnnData):
+            inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)
+
+        if not isinstance(inference_data, torch.utils.data.DataLoader):
+            inference_data = CollateLoader(
+                dataset=inference_data,
+                batch_size=batch_size,
+                num_workers=num_workers,
+                currgenes=currgenes,
+                refgenes=refgenes,
+                **kwargs,
+            )
 
         preds = []
         labels = []
         prev_network_state = self.network.training
         self.network.eval()
         with torch.no_grad():
-            for X in tqdm(loader):
+            for X in tqdm(inference_data):
                 # Some dataloaders will have labels, handle this case
                 if len(X) == 2:
                     data, label = X
@@ -490,46 +495,3 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
     }
 
     return metrics
-
-
-# class UploadCallback(pl.callbacks.Callback):
-#     """Custom PyTorch callback for uploading model checkpoints to the braingeneers S3 bucket.
-
-#     Parameters:
-#     path: Local path to folder where model checkpoints are saved
-#     desc: Description of checkpoint that is appended to checkpoint file name on save
-#     upload_path: Subpath in braingeneersdev/jlehrer/ to upload model checkpoints to
-#     """
-
-#     def __init__(
-#         self,
-#         path: str,
-#         desc: str,
-#         bucket: str,
-#         remote_path: str,
-#         epochs: int = 10,
-#     ) -> None:
-#         """_summary_
-
-#         :param path: Local path to save model checkpoints to
-#         :param desc: Name of saved model checkpoints, will be checkpoint-{epoch}-desc-{desc}
-#         :param bucket: S3 bucket to upload to
-#         :param remote_path: Key in s3 bucket to upload to
-#         :param epochs: Number of epochs to skip before saving model, defaults to 10
-#         """
-#         super().__init__()
-#         self.path = path
-#         self.desc = desc
-#         self.epochs = epochs
-#         self.remote_path = remote_path
-#         self.bucket = bucket
-
-#     def on_train_epoch_end(self, trainer, pl_module):
-#         epoch = trainer.current_epoch
-
-#         if epoch % self.epochs == 0 and epoch > 0:  # Save every ten epochs
-#             checkpoint = f"checkpoint-{epoch}-desc-{self.desc}.ckpt"
-#             trainer.save_checkpoint(os.path.join(self.path, checkpoint))
-#             print(f"Uploading checkpoint at epoch {epoch}")
-
-#             upload(bucket_name=self.bucket, file_name=os.path.join(self.path, checkpoint), remote_name=os.path.join(self.remote_path, checkpoint))

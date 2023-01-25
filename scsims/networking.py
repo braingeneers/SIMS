@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 
 
 class UploadCallback(pl.callbacks.Callback):
-    """Custom PyTorch callback for uploading model checkpoints to the braingeneers S3 bucket.
+    """Custom PyTorch callback for uploading model checkpoints to a S3 bucket.
 
     Parameters:
     path: Local path to folder where model checkpoints are saved
@@ -37,7 +37,7 @@ class UploadCallback(pl.callbacks.Callback):
     def on_train_epoch_end(self, trainer, pl_module):
         epoch = trainer.current_epoch
 
-        if epoch % self.epochs == 0 and epoch > 0:  # Save every ten epochs
+        if epoch % self.epochs == 0:  # Save every ten epochs
             checkpoint = f"checkpoint-{epoch}-desc-{self.desc}.ckpt"
             checkpoint_path = os.path.join(self.path, checkpoint)
 

@@ -86,11 +86,15 @@ class DataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.split = split
+        self.sep = None
 
         # If we have a list of urls, we can generate the list of paths of datafiles/labelfiles that will be downloaded after self.prepare_data()
         if self.urls is not None:
             self.datafiles = [join(self.datapath, f) for f in self.urls.keys()]
             self.labelfiles = [join(self.datapath, f"labels_{f}") for f in self.urls.keys()]
+        else:
+            self.datafiles = datafiles 
+            self.labelfiles = labelfiles 
 
         if isinstance(self.datafiles[0], str):
             suffix = pathlib.Path(self.datafiles[0]).suffix
@@ -145,7 +149,7 @@ class DataModule(pl.LightningDataModule):
                 list(set(np.concatenate([pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles])))
             )
         elif isinstance(self.datafiles[0], an.AnnData):
-            unique_targets = np.array(list(set(np.concatenate([datafile.obs[:, self.class_label].unique() for datafile in self.datafiles]))))
+            unique_targets = np.array(list(set(np.concatenate([datafile.obs.loc[:, self.class_label].unique() for datafile in self.datafiles]))))
         else:
             raise NotImplementedError("Need to implement support for handling csv/tsv files in the generate_dataloaders class first.")
 
@@ -171,8 +175,8 @@ class DataModule(pl.LightningDataModule):
                         labels.to_csv(file, index=False, sep=self.sep)
             else:
                 for data in self.datafiles:
-                    data.obs[:, f"categorical_{self.class_label}"] = data.obs.loc[:, self.class_label]
-                    data.obs[:, self.class_label] = self.label_encoder.transform(data.obs.loc[:, f"categorical_{self.class_label}"])
+                    data.obs.loc[:, f"categorical_{self.class_label}"] = data.obs.loc[:, self.class_label]
+                    data.obs.loc[:, self.class_label] = self.label_encoder.transform(data.obs.loc[:, f"categorical_{self.class_label}"])
 
     def setup(self, stage: Optional[str] = None):
         if not self.setuped:
@@ -185,7 +189,6 @@ class DataModule(pl.LightningDataModule):
                 datafiles=self.datafiles,
                 labelfiles=self.labelfiles,
                 class_label=self.class_label,
-                sep=self.sep,
                 batch_size=self.batch_size,
                 num_workers=self.num_workers,
                 pin_memory=True,  # For gpu training
@@ -209,6 +212,7 @@ class DataModule(pl.LightningDataModule):
             self.weights = compute_class_weights(
                 labelfiles=self.labelfiles,
                 class_label=self.class_label,
+                datafiles=self.datafiles,
                 sep=self.sep,
                 device=self.device,
             )
@@ -227,8 +231,12 @@ class DataModule(pl.LightningDataModule):
     @cached_property
     def num_labels(self):
         val = []
-        for file in self.labelfiles:
-            val.extend(list(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values))
+        if self.labelfiles is not None:
+            for file in self.labelfiles:
+                val.extend(list(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values))
+        else:
+            for file in self.datafiles:
+                val.extend(list(file.obs.loc[:, self.class_label].values))
 
         return len(set(val))
 
@@ -254,101 +262,6 @@ class DataModule(pl.LightningDataModule):
     @cached_property
     def output_dim(self):
         return self.num_labels
-
-    def __len__(self):
-        l = [pd.read_csv(f, sep=self.sep).shape[0] for f in self.labelfiles]
-
-        return sum(l)
-
-
-def generate_trainer(
-    datafiles: List[str],
-    labelfiles: List[str],
-    class_label: str,
-    batch_size: int,
-    num_workers: int,
-    optim_params: Dict[str, Any] = {
-        "optimizer": torch.optim.Adam,
-        "lr": 0.02,
-    },
-    weighted_metrics: bool = None,
-    scheduler_params: Dict[str, float] = None,
-    wandb_name: str = None,
-    weights: torch.Tensor = None,
-    max_epochs=500,
-    *args,
-    **kwargs,
-):
-    """
-    Generates PyTorch Lightning trainer and datasets for model training.
-
-    :param datafiles: List of absolute paths to datafiles
-    :type datafiles: List[str]
-    :param labelfiles: List of absolute paths to labelfiles
-    :type labelfiles: List[str]
-    :param class_label: Class label to train on
-    :type class_label: str
-    :param weighted_metrics: To use weighted metrics in model training
-    :type weighted_metrics: bool
-    :param batch_size: Batch size in dataloader
-    :type batch_size: int
-    :param num_workers: Number of workers in dataloader
-    :type num_workers: int
-    :param optim_params: Dictionary defining optimizer and any needed/optional arguments for optimizer initializatiom
-    :type optim_params: Dict[str, Any]
-    :param wandb_name: Name of run in Wandb.ai, defaults to ''
-    :type wandb_name: str, optional
-    :return: Trainer, model, datamodule
-    :rtype: Trainer, model, datamodule
-    """
-
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    print(f"Device is {device}")
-
-    here = pathlib.Path(__file__).parent.absolute()
-    data_path = os.path.join(here, "..", "..", "..", "data")
-
-    wandb_logger = WandbLogger(project=f"tabnet-classifer-sweep", name=wandb_name)
-
-    early_stop_callback = EarlyStopping(
-        monitor=("weighted_val_accuracy" if weighted_metrics else "val_accuarcy"),
-        min_delta=0.00,
-        patience=3,
-        verbose=False,
-        mode="max",
-    )
-
-    module = DataModule(
-        datafiles=datafiles,
-        labelfiles=labelfiles,
-        class_label=class_label,
-        batch_size=batch_size,
-        num_workers=num_workers,
-    )
-
-    model = SIMSClassifier(
-        input_dim=module.num_features,
-        output_dim=module.num_labels,
-        weighted_metrics=weighted_metrics,
-        optim_params=optim_params,
-        scheduler_params=scheduler_params,
-        weights=weights,
-    )
-
-    trainer = pl.Trainer(
-        gpus=(1 if torch.cuda.is_available() else 0),
-        auto_lr_find=False,
-        # gradient_clip_val=0.5,
-        logger=wandb_logger,
-        max_epochs=max_epochs,
-        callbacks=[
-            uploadcallback,
-        ],
-        # Calculate validation every quarter epoch instead of full since dataset is large, and would like to test this
-        val_check_interval=0.25,
-    )
-
-    return trainer, model, module
 
 
 def download_raw_expression_matrices(datasets: Dict[str, Tuple[str, str]], unzip: bool = True, datapath: str = None) -> None:

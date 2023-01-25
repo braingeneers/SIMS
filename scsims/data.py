@@ -455,7 +455,7 @@ def clean_sample(
 
 def generate_split_dataloaders(
     datafile: Union[str, an.AnnData],
-    labelfile: Union[str, an.AnnData],
+    labelfile: Union[str, None],
     class_label: str,
     index_col: str,
     test_prop: float,
@@ -485,14 +485,9 @@ def generate_split_dataloaders(
     :type test_prop: float, optional
     :return: train, val, test loaders
     :rtype: Tuple[CollateLoader, CollateLoader, CollateLoader]
-    """
+    """ 
 
-    if subset is not None:
-        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).iloc[subset, :]
-        current_labels = current_labels.loc[:, class_label]
-    else:
-        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col).loc[:, class_label]
-
+            
     if isinstance(datafile, an.AnnData):
         data = datafile
     else:
@@ -515,6 +510,17 @@ def generate_split_dataloaders(
         #         class_label=class_label,
         #         sep=sep,
         #     )
+    # if we are using a path to a labelfile, read it in, otherwise
+    # just grab the dataframe from the .obs attribute of the anndata object
+    if labelfile is not None:
+        current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col)
+    else:
+        current_labels = datafile.obs.copy().set_index(index_col) if index_col is not None else datafile.obs.copy()
+        
+    if subset is not None:
+        current_labels = current_labels.iloc[subset, :]
+
+    current_labels = current_labels.loc[:, class_label]
 
     if split:
         # Make stratified split on labels
@@ -612,15 +618,17 @@ def generate_dataloaders(
     :return: Either lists containing train, val, test or SequentialLoader's for train, val, test
     :rtype: Union[Tuple[List[CollateLoader], List[CollateLoader], List[CollateLoader]], Tuple[SequentialLoader, SequentialLoader, SequentialLoader]]
     """
-    if len(datafiles) != len(labelfiles):
-        raise ValueError("Must have same number of datafiles and labelfiles")
-
     if not collocate and len(datafiles) > 1:
         warnings.warn(
             f"collocate={collocate}, so multiple files will return multiple DataLoaders and cannot be trained sequentially with PyTorch-Lightning"
         )
 
     train, val, test = [], [], []
+
+    # we need to handle labelfiles being None since it can happen when we're using a .obs key for the labels
+    if labelfiles is None:
+        labelfiles = [None] * len(datafiles)
+
     for datafile, labelfile in zip(datafiles, labelfiles):
         loaders = generate_split_dataloaders(
             datafile=datafile,
@@ -666,9 +674,10 @@ def generate_dataloaders(
 
 
 def compute_class_weights(
-    labelfiles: List[str],
+    labelfiles: list[str],
     class_label: str,
-    sep: str = ",",
+    datafiles: list[an.AnnData] = None,
+    sep: str = None,
     device: str = None,
 ) -> torch.Tensor:
     """
@@ -682,13 +691,17 @@ def compute_class_weights(
     :rtype: torch.Tensor
     """
     comb = []
-    for file in labelfiles:
-        comb.extend(pd.read_csv(file, sep=sep).loc[:, class_label].values)
+    if labelfiles is not None: # if we use labelfiles they are dataframes, otherwise use the column in the obs 
+        for file in labelfiles:
+            comb.extend(pd.read_csv(file, sep=sep).loc[:, class_label].values)
+    else:
+        for file in datafiles:
+            comb.extend(file.obs.loc[:, class_label].values)
 
     weights = torch.from_numpy(
         compute_class_weight(
-            classes=np.unique(comb),
             y=comb,
+            classes=np.unique(comb),
             class_weight="balanced",
         )
     ).float()

@@ -35,8 +35,9 @@ class SIMS:
             **kwargs,
         )
 
-        self.label_encoder = self.datamodule.label_encoder
-
+        for att, value in self.datamodule.__dict__.items():
+            setattr(self, att, value)
+    
     def setup_model(self, *args, **kwargs):
         self.model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
 
@@ -47,12 +48,10 @@ class SIMS:
         )
 
     def train(self, *args, **kwargs):
-        if not hasattr(self, "datamodule"):
-            self.setup_data()
         if not hasattr(self, "trainer"):
-            self.setup_trainer()
+            raise AttributeError("Cannot train until setup_trainer() is called.")
         if not hasattr(self, "model"):
-            self.setup_model()
+            raise AttributeError("Cannot train until setup_model() is called.")
 
         self.trainer.fit(self.model, datamodule=self.datamodule)
 

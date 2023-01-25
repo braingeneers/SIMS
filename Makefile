@@ -26,3 +26,6 @@ release:
 
 clean:
 	rm -rf dist/ build/ *.egg-info
+
+install:
+	pip install --no-deps .

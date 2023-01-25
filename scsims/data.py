@@ -497,15 +497,24 @@ def generate_split_dataloaders(
         data = datafile
     else:
         suffix = pathlib.Path(datafile).suffix
+
         if suffix == ".h5ad":
             data = an.read_h5ad(datafile)
-    if preprocess and refgenes is not None:
-        # Do the entire minibatch preprocessing on the input data
-        data = clean_sample(
-            sample=data.X,
-            refgenes=refgenes,
-            currgenes=currgenes,
-        )
+            if preprocess and refgenes is not None:
+                # Do the entire minibatch preprocessing on the input data
+                data = clean_sample(
+                    sample=data.X,
+                    refgenes=refgenes,
+                    currgenes=currgenes,
+                )
+        # TODO: add support for delimiteddataset
+        # elif suffix == '.csv' or suffix == '.tsv':
+        #     data = DelimitedDataset(
+        #         filename=datafile,
+        #         labelname=labelfile,
+        #         class_label=class_label,
+        #         sep=sep,
+        #     )
 
     if split:
         # Make stratified split on labels

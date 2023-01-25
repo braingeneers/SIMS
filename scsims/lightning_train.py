@@ -24,9 +24,9 @@ class DataModule(pl.LightningDataModule):
     def __init__(
         self,
         class_label: str,
-        datafiles: Union[List[str], an.AnnData] = None,
-        labelfiles: Union[List[str], an.AnnData] = None,
-        urls: Dict[str, List[str]] = None,
+        datafiles: Union[list[str], list[an.AnnData]] = None,
+        labelfiles: list[str] = None,
+        urls: Dict[str, list[str]] = None,
         sep: str = None,
         unzip: bool = True,
         datapath: str = "",
@@ -56,6 +56,8 @@ class DataModule(pl.LightningDataModule):
         :type datafiles: List[str], optional
         :param labelfiles: List of absolute paths to labelfiles, if not using URLS. defaults to None
         :type labelfiles: List[str], optional
+        :param label_key: if no label file is provided, this is the key in the anndata.obs that corresponds to the class
+        label to train on 
         :param urls: Dictionary of URLS to download, as specified in the above docstring, defaults to None
         :type urls: Dict[str, List[str, str]], optional
         :param unzip: Boolean, whether to unzip the datafiles in the url, defaults to False
@@ -70,7 +72,6 @@ class DataModule(pl.LightningDataModule):
 
         """
         super().__init__()
-
         # Make sure we don't have datafiles/labelfiles AND urls at start
         if urls is not None and datafiles is not None or urls is not None and labelfiles is not None:
             raise ValueError(
@@ -90,26 +91,31 @@ class DataModule(pl.LightningDataModule):
         if self.urls is not None:
             self.datafiles = [join(self.datapath, f) for f in self.urls.keys()]
             self.labelfiles = [join(self.datapath, f"labels_{f}") for f in self.urls.keys()]
-        else:
-            self.datafiles = datafiles
-            self.labelfiles = labelfiles
 
-        # Warn user in case tsv/csv ,/\t don't match, this can be annoying to diagnose
-        suffix = pathlib.Path(self.labelfiles[0]).suffix
-        if (sep == "\t" and suffix == "csv") or (sep == "," and suffix == ".tsv"):
-            warnings.warn(f"Passed delimiter sep={sep} doesn't match file extension, continuing...")
+        if isinstance(self.datafiles[0], str):
+            suffix = pathlib.Path(self.datafiles[0]).suffix
+            if suffix == ".tsv" or suffix == ".csv":
+                raise NotImplementedError("Need to implement support for handling csv/tsv files in the generate_dataloaders class.")
 
-        # Infer sep based on .csv/.tsv of labelfile (assumed to be homogeneous in case of delimited datafiles) if sep is not passed
-        if sep is None:
-            if suffix == ".tsv":
-                self.sep = "\t"
-            elif suffix == ".csv":
-                self.sep = ","
+            self.datafiles = [an.read_h5ad(file, backed="r+") for file in self.datafiles]
+
+        if self.labelfiles is not None:
+            # Warn user in case tsv/csv ,/\t don't match, this can be annoying to diagnose
+            suffix = pathlib.Path(self.labelfiles[0]).suffix
+            if (sep == "\t" and suffix == "csv") or (sep == "," and suffix == ".tsv"):
+                warnings.warn(f"Passed delimiter sep={sep} doesn't match file extension, continuing...")
+
+            # Infer sep based on .csv/.tsv of labelfile (assumed to be homogeneous in case of delimited datafiles) if sep is not passed
+            if sep is None:
+                if suffix == ".tsv":
+                    self.sep = "\t"
+                elif suffix == ".csv":
+                    self.sep = ","
+                else:
+                    warnings.warn(f'Separator not passed and not able to be inferred from suffix={suffix}. Falling back to ","')
+                    self.sep = ","
             else:
-                warnings.warn(f'Separator not passed and not able to be inferred from suffix={suffix}. Falling back to ","')
-                self.sep = ","
-        else:
-            self.sep = sep
+                self.sep = sep
 
         self.args = args
         self.kwargs = kwargs
@@ -134,29 +140,39 @@ class DataModule(pl.LightningDataModule):
             self.prepared = True
 
     def _encode_labels(self):
-        unique_targets = np.array(
-            list(set(np.concatenate([pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles])))
-        )
+        if self.labelfiles is not None:
+            unique_targets = np.array(
+                list(set(np.concatenate([pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles])))
+            )
+        elif isinstance(self.datafiles[0], an.AnnData):
+            unique_targets = np.array(list(set(np.concatenate([datafile.obs[:, self.class_label].unique() for datafile in self.datafiles]))))
+        else:
+            raise NotImplementedError("Need to implement support for handling csv/tsv files in the generate_dataloaders class first.")
+
+        print("Building LabelEncoder.")
+        self.label_encoder = LabelEncoder()
+        self.label_encoder = self.label_encoder.fit(unique_targets)
 
         if not np.issubdtype(unique_targets.dtype, np.number):
-            print("Labels are non-numeric, using sklearn.preprocessing.LabelEncoder to encode.")
-            self.label_encoder = LabelEncoder()
-            self.label_encoder = self.label_encoder.fit(unique_targets)
+            if self.labelfiles is not None:
+                for idx, file in enumerate(self.labelfiles):
+                    print(f"Transforming labelfile {idx + 1}/{len(self.labelfiles)}")
 
-            for idx, file in enumerate(self.labelfiles):
-                print(f"Transforming labelfile {idx + 1}/{len(self.labelfiles)}")
+                    labels = pd.read_csv(file, sep=self.sep)
 
-                labels = pd.read_csv(file, sep=self.sep)
+                    if f"categorical_{self.class_label}" not in labels.columns:
+                        labels.loc[:, f"categorical_{self.class_label}"] = labels.loc[:, self.class_label]
 
-                if f"categorical_{self.class_label}" not in labels.columns:
-                    labels.loc[:, f"categorical_{self.class_label}"] = labels.loc[:, self.class_label]
+                        labels.loc[:, self.class_label] = self.label_encoder.transform(
+                            labels.loc[:, f"categorical_{self.class_label}"]
+                        )
 
-                    labels.loc[:, self.class_label] = self.label_encoder.transform(
-                        labels.loc[:, f"categorical_{self.class_label}"]
-                    )
-
-                    # Don't need to re-index here
-                    labels.to_csv(file, index=False, sep=self.sep)
+                        # Don't need to re-index here
+                        labels.to_csv(file, index=False, sep=self.sep)
+            else:
+                for data in self.datafiles:
+                    data.obs[:, f"categorical_{self.class_label}"] = data.obs.loc[:, self.class_label]
+                    data.obs[:, self.class_label] = self.label_encoder.transform(data.obs.loc[:, f"categorical_{self.class_label}"])
 
     def setup(self, stage: Optional[str] = None):
         if not self.setuped:

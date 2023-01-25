@@ -1,5 +1,6 @@
 import pathlib
 from os.path import join
+from typing import Union
 
 import anndata as an
 import numpy as np
@@ -16,32 +17,24 @@ here = pathlib.Path(__file__).parent.absolute()
 class SIMS:
     def __init__(
         self,
-        adata,
-        labels_key,
+        adata: Union[an.AnnData, list[an.AnnData]],
+        labels_key: str,
         verbose=True,
+        *args,
+        **kwargs,
     ) -> None:
         self.adata = adata
         self.labels_key = labels_key
         self.verbose = verbose
 
-    def setup_data(self, *args, **kwargs):
-        if self.verbose:
-            print("Setting up label file for training")
-        self.labels = pd.DataFrame(an.read_h5ad(self.adata, backed="r+").obs[self.labels_key])
-        self.labels.to_csv(join(here, "_temp_labels.csv"), index=True)
-
-        if self.verbose:
-            print("Setting up DataModule")
         self.datamodule = DataModule(
-            datafiles=[self.adata],
-            labelfiles=[join(here, "_temp_labels.csv")],
+            datafiles=[self.adata] if isinstance(self.adata, an.AnnData) else self.adata,  # since datamodule expects a list of data always
+            label_key=labels_key,
             class_label=self.labels_key,
             *args,
             **kwargs,
         )
 
-        self.datamodule.prepare_data()
-        self.datamodule.setup()
         self.label_encoder = self.datamodule.label_encoder
 
     def setup_model(self, *args, **kwargs):
@@ -51,13 +44,7 @@ class SIMS:
         self.trainer = pl.Trainer(
             *args,
             **kwargs,
-            max_epochs=1000,
         )
-
-    def setup(self):
-        self.setup_data()
-        self.setup_model()
-        self.setup_trainer()
 
     def train(self, *args, **kwargs):
         if not hasattr(self, "datamodule"):
@@ -69,8 +56,8 @@ class SIMS:
 
         self.trainer.fit(self.model, datamodule=self.datamodule)
 
-    def predict(self, loader):
-        results = self.trainer.predict(self.model, loader)
-        results = [torch.argmax(output[0], dim=1) for output in results]
+    def predict(self, adata: an.AnnData):
+        results = self.model.predict(adata)
+        results = results.apply(lambda x: self.label_encoder(x))
 
-        return self.label_encoder.inverse_transform(results)
+        return results

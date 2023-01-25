@@ -18,7 +18,7 @@ class UploadCallback(pl.callbacks.Callback):
         self,
         path: str,
         desc: str,
-        s3: boto3.resource, 
+        s3: boto3.resource,
         bucket: str,
         upload_prefix="model_checkpoints",
         n_epochs: int = 10,
@@ -28,8 +28,8 @@ class UploadCallback(pl.callbacks.Callback):
         self.path = path
         self.desc = desc
 
-        self.s3 = s3 
-        self.bucket = bucket 
+        self.s3 = s3
+        self.bucket = bucket
         self.upload_prefix = upload_prefix
         self.epochs = n_epochs
         self.quiet = quiet

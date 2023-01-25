@@ -57,7 +57,7 @@ class DataModule(pl.LightningDataModule):
         :param labelfiles: List of absolute paths to labelfiles, if not using URLS. defaults to None
         :type labelfiles: List[str], optional
         :param label_key: if no label file is provided, this is the key in the anndata.obs that corresponds to the class
-        label to train on 
+        label to train on
         :param urls: Dictionary of URLS to download, as specified in the above docstring, defaults to None
         :type urls: Dict[str, List[str, str]], optional
         :param unzip: Boolean, whether to unzip the datafiles in the url, defaults to False
@@ -93,13 +93,15 @@ class DataModule(pl.LightningDataModule):
             self.datafiles = [join(self.datapath, f) for f in self.urls.keys()]
             self.labelfiles = [join(self.datapath, f"labels_{f}") for f in self.urls.keys()]
         else:
-            self.datafiles = datafiles 
-            self.labelfiles = labelfiles 
+            self.datafiles = datafiles
+            self.labelfiles = labelfiles
 
         if isinstance(self.datafiles[0], str):
             suffix = pathlib.Path(self.datafiles[0]).suffix
             if suffix == ".tsv" or suffix == ".csv":
-                raise NotImplementedError("Need to implement support for handling csv/tsv files in the generate_dataloaders class.")
+                raise NotImplementedError(
+                    "Need to implement support for handling csv/tsv files in the generate_dataloaders class."
+                )
 
             self.datafiles = [an.read_h5ad(file, backed="r+") for file in self.datafiles]
 
@@ -146,12 +148,22 @@ class DataModule(pl.LightningDataModule):
     def _encode_labels(self):
         if self.labelfiles is not None:
             unique_targets = np.array(
-                list(set(np.concatenate([pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles])))
+                list(
+                    set(
+                        np.concatenate(
+                            [pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles]
+                        )
+                    )
+                )
             )
         elif isinstance(self.datafiles[0], an.AnnData):
-            unique_targets = np.array(list(set(np.concatenate([datafile.obs.loc[:, self.class_label].unique() for datafile in self.datafiles]))))
+            unique_targets = np.array(
+                list(set(np.concatenate([datafile.obs.loc[:, self.class_label].unique() for datafile in self.datafiles])))
+            )
         else:
-            raise NotImplementedError("Need to implement support for handling csv/tsv files in the generate_dataloaders class first.")
+            raise NotImplementedError(
+                "Need to implement support for handling csv/tsv files in the generate_dataloaders class first."
+            )
 
         print("Building LabelEncoder.")
         self.label_encoder = LabelEncoder()
@@ -176,7 +188,9 @@ class DataModule(pl.LightningDataModule):
             else:
                 for data in self.datafiles:
                     data.obs.loc[:, f"categorical_{self.class_label}"] = data.obs.loc[:, self.class_label]
-                    data.obs.loc[:, self.class_label] = self.label_encoder.transform(data.obs.loc[:, f"categorical_{self.class_label}"])
+                    data.obs.loc[:, self.class_label] = self.label_encoder.transform(
+                        data.obs.loc[:, f"categorical_{self.class_label}"]
+                    )
 
     def setup(self, stage: Optional[str] = None):
         if not self.setuped:

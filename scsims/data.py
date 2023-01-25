@@ -485,9 +485,8 @@ def generate_split_dataloaders(
     :type test_prop: float, optional
     :return: train, val, test loaders
     :rtype: Tuple[CollateLoader, CollateLoader, CollateLoader]
-    """ 
+    """
 
-            
     if isinstance(datafile, an.AnnData):
         data = datafile
     else:
@@ -516,7 +515,7 @@ def generate_split_dataloaders(
         current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col)
     else:
         current_labels = datafile.obs.copy().set_index(index_col) if index_col is not None else datafile.obs.copy()
-        
+
     if subset is not None:
         current_labels = current_labels.iloc[subset, :]
 
@@ -691,7 +690,7 @@ def compute_class_weights(
     :rtype: torch.Tensor
     """
     comb = []
-    if labelfiles is not None: # if we use labelfiles they are dataframes, otherwise use the column in the obs 
+    if labelfiles is not None:  # if we use labelfiles they are dataframes, otherwise use the column in the obs
         for file in labelfiles:
             comb.extend(pd.read_csv(file, sep=sep).loc[:, class_label].values)
     else:

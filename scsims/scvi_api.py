@@ -1,12 +1,8 @@
 import pathlib
-from os.path import join
 from typing import Union
 
 import anndata as an
-import numpy as np
-import pandas as pd
 import pytorch_lightning as pl
-import torch
 
 from scsims.lightning_train import DataModule
 from scsims.model import SIMSClassifier
@@ -28,7 +24,9 @@ class SIMS:
         self.verbose = verbose
 
         self.datamodule = DataModule(
-            datafiles=[self.adata] if isinstance(self.adata, an.AnnData) else self.adata,  # since datamodule expects a list of data always
+            datafiles=[self.adata]
+            if isinstance(self.adata, an.AnnData)
+            else self.adata,  # since datamodule expects a list of data always
             label_key=labels_key,
             class_label=self.labels_key,
             *args,
@@ -37,7 +35,7 @@ class SIMS:
 
         for att, value in self.datamodule.__dict__.items():
             setattr(self, att, value)
-    
+
     def setup_model(self, *args, **kwargs):
         self.model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
 

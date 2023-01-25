@@ -7,6 +7,7 @@ import zipfile
 from functools import partial
 from pathlib import Path
 from typing import Callable, Dict
+
 import anndata as an
 import numpy as np
 import pandas as pd
@@ -400,7 +401,9 @@ class SIMSClassifier(pl.LightningModule):
         :param anndata: Anndata object to do inference on
         """
         if not isinstance(inference_data, (an.AnnData, torch.utils.data.Dataset, torch.utils.data.DataLoader)):
-            raise ValueError(f"inference_data must be an AnnData object, a torch dataset, or a torch dataloader. Got type {type(inference_data)}")
+            raise ValueError(
+                f"inference_data must be an AnnData object, a torch dataset, or a torch dataloader. Got type {type(inference_data)}"
+            )
 
         if isinstance(inference_data, an.AnnData):
             inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)

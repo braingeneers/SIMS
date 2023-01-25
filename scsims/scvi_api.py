@@ -48,15 +48,15 @@ class SIMS:
         if not hasattr(self, "_model"):
             self.setup_model(*args, **kwargs)
 
-        self._trainer.fit(self.model, datamodule=self.datamodule)
+        self._trainer.fit(self._model, datamodule=self.datamodule)
 
     def predict(self, adata: an.AnnData, *args, **kwargs):
-        results = self.model.predict(adata, *args, **kwargs)
+        results = self._model.predict(adata, *args, **kwargs)
         results = results.apply(lambda x: self.label_encoder(x))
 
         return results
 
     def explain(self, adata: an.AnnData, *args, **kwargs):
-        results = self.model.explain(adata, *args, **kwargs)
+        results = self._model.explain(adata, *args, **kwargs)
         
         return results

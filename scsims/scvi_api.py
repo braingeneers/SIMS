@@ -47,14 +47,19 @@ class SIMS:
 
     def train(self, *args, **kwargs):
         if not hasattr(self, "trainer"):
-            raise AttributeError("Cannot train until setup_trainer() is called.")
+            self.setup_trainer()
         if not hasattr(self, "model"):
-            raise AttributeError("Cannot train until setup_model() is called.")
+            self.setup_model()
 
         self.trainer.fit(self.model, datamodule=self.datamodule)
 
-    def predict(self, adata: an.AnnData):
-        results = self.model.predict(adata)
+    def predict(self, adata: an.AnnData, *args, **kwargs):
+        results = self.model.predict(adata, *args, **kwargs)
         results = results.apply(lambda x: self.label_encoder(x))
 
+        return results
+
+    def explain(self, adata: an.AnnData, *args, **kwargs):
+        results = self.model.explain(adata, *args, **kwargs)
+        
         return results

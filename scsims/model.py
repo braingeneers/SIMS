@@ -247,6 +247,25 @@ class SIMSClassifier(pl.LightningModule):
             "monitor": "train_loss",
         }
 
+    def __parse_data(self, inference_data, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+        if not isinstance(inference_data, (an.AnnData, torch.utils.data.Dataset, torch.utils.data.DataLoader)):
+            raise ValueError(
+                f"inference_data must be an AnnData object, a torch dataset, or a torch dataloader. Got type {type(inference_data)}"
+            )
+
+        if isinstance(inference_data, an.AnnData):
+            inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)
+
+        if not isinstance(inference_data, torch.utils.data.DataLoader):
+            inference_data = CollateLoader(
+                dataset=inference_data,
+                batch_size=batch_size,
+                num_workers=num_workers,
+                currgenes=currgenes,
+                refgenes=refgenes,
+                **kwargs,
+            )
+
     def explain(
         self,
         anndata,
@@ -259,16 +278,7 @@ class SIMSClassifier(pl.LightningModule):
         normalize=False,
         **kwargs,
     ):
-        dataset = MatrixDatasetWithoutLabels(anndata.X[rows, :] if rows is not None else anndata.X)
-
-        loader = CollateLoader(
-            dataset=dataset,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            currgenes=currgenes,
-            refgenes=refgenes,
-            **kwargs,
-        )
+        loader = self.__parse_data(anndata, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
 
         if cache and self._explain_matrix is not None:
             return self._explain_matrix
@@ -328,102 +338,19 @@ class SIMSClassifier(pl.LightningModule):
                 self._feature_importances = f
             return f
 
-    def save_model(self, path):
-        saved_params = {}
-        init_params = {}
-        for key, val in self.get_params().items():
-            if isinstance(val, type):
-                # Don't save torch specific params
-                continue
-            else:
-                init_params[key] = val
-        saved_params["init_params"] = init_params
-
-        class_attrs = {"preds_mapper": self.preds_mapper}
-        saved_params["class_attrs"] = class_attrs
-
-        # Create folder
-        Path(path).mkdir(parents=True, exist_ok=True)
-
-        # Save models params
-        with open(Path(path).joinpath("model_params.json"), "w", encoding="utf8") as f:
-            json.dump(saved_params, f, cls=ComplexEncoder)
-
-        # Save state_dict
-        torch.save(self.network.state_dict(), Path(path).joinpath("network.pt"))
-        shutil.make_archive(path, "zip", path)
-        shutil.rmtree(path)
-        print(f"Successfully saved model at {path}.zip")
-        return f"{path}.zip"
-
-    def load_model(self, filepath):
-        try:
-            with zipfile.ZipFile(filepath) as z:
-                with z.open("model_params.json") as f:
-                    loaded_params = json.load(f)
-                    loaded_params["init_params"]["device_name"] = self.device_name
-                with z.open("network.pt") as f:
-                    try:
-                        saved_state_dict = torch.load(f, map_location=self.device)
-                    except io.UnsupportedOperation:
-                        # In Python <3.7, the returned file object is not seekable (which at least
-                        # some versions of PyTorch require) - so we'll try buffering it in to a
-                        # BytesIO instead:
-                        saved_state_dict = torch.load(
-                            io.BytesIO(f.read()),
-                            map_location=self.device,
-                        )
-        except KeyError:
-            raise KeyError("Your zip file is missing at least one component")
-
-        self.__init__(**loaded_params["init_params"])
-
-        self._set_network()
-        self.network.load_state_dict(saved_state_dict)
-        self.network.eval()
-        self.load_class_attrs(loaded_params["class_attrs"])
-
-    def load_weights_from_unsupervised(self, unsupervised_model):
-        update_state_dict = copy.deepcopy(self.network.state_dict())
-        for param, weights in unsupervised_model.network.state_dict().items():
-            if param.startswith("encoder"):
-                # Convert encoder's layers name to match
-                new_param = "tabnet." + param
-            else:
-                new_param = param
-            if self.network.state_dict().get(new_param) is not None:
-                # update only common layers
-                update_state_dict[new_param] = weights
-
     def predict(self, inference_data, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
         """Does inference on data
 
-        :param anndata: Anndata object to do inference on
+        :param inference_data: Anndata, torch Dataset, or torch DataLoader object to do inference on
         """
-        if not isinstance(inference_data, (an.AnnData, torch.utils.data.Dataset, torch.utils.data.DataLoader)):
-            raise ValueError(
-                f"inference_data must be an AnnData object, a torch dataset, or a torch dataloader. Got type {type(inference_data)}"
-            )
-
-        if isinstance(inference_data, an.AnnData):
-            inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)
-
-        if not isinstance(inference_data, torch.utils.data.DataLoader):
-            inference_data = CollateLoader(
-                dataset=inference_data,
-                batch_size=batch_size,
-                num_workers=num_workers,
-                currgenes=currgenes,
-                refgenes=refgenes,
-                **kwargs,
-            )
+        loader = self.__parse_data(inference_data, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
 
         preds = []
         labels = []
         prev_network_state = self.network.training
         self.network.eval()
         with torch.no_grad():
-            for X in tqdm(inference_data):
+            for X in tqdm(loader):
                 # Some dataloaders will have labels, handle this case
                 if len(X) == 2:
                     data, label = X
@@ -447,7 +374,7 @@ class SIMSClassifier(pl.LightningModule):
 
         if hasattr(self, "datamodule") and hasattr(self.datamodule, "label_encoder"):
             encoder = self.datamodule.label_encoder
-            final = final.apply(lambda x: encoder.inverse_transform(x), axis=1)
+            final = final.apply(lambda x: encoder.inverse_transform(x))
 
         if labels != []:
             final["actual_label"] = labels

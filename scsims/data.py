@@ -514,7 +514,7 @@ def generate_split_dataloaders(
     if labelfile is not None:
         current_labels = pd.read_csv(labelfile, sep=sep, index_col=index_col)
     else:
-        current_labels = datafile.obs.copy().set_index(index_col) if index_col is not None else datafile.obs.copy()
+        current_labels = datafile.obs.copy().set_index(index_col) if index_col is not None else datafile.obs.copy().reset_index()
 
     if subset is not None:
         current_labels = current_labels.iloc[subset, :]
@@ -536,11 +536,11 @@ def generate_split_dataloaders(
             test_size=test_prop,
             random_state=(42 if deterministic else None),
         )
-
+        
         train, val, test = (
             AnnDatasetMatrix(
                 # because if we preprocess data becomes a matrix, not an anndata object
-                matrix=(data[split.index] if preprocess else data.X[split.index]),
+                matrix=(data[split.index] if preprocess else data.X[split.index, :]),
                 labels=split.values,
                 split=split.index,
                 *args,

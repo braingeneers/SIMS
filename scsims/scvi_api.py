@@ -13,22 +13,13 @@ here = pathlib.Path(__file__).parent.absolute()
 class SIMS:
     def __init__(
         self,
-        adata: Union[an.AnnData, list[an.AnnData]],
-        labels_key: str,
-        verbose=True,
+        datafiles: Union[list[str], list[an.AnnData]],
         *args,
         **kwargs,
     ) -> None:
-        self.adata = adata
-        self.labels_key = labels_key
-        self.verbose = verbose
-
         self.datamodule = DataModule(
-            datafiles=[self.adata]
-            if isinstance(self.adata, an.AnnData)
-            else self.adata,  # since datamodule expects a list of data always
-            label_key=labels_key,
-            class_label=self.labels_key,
+            datafiles=[datafiles] if isinstance(datafiles, an.AnnData) else datafiles, 
+            # since datamodule expects a list of data always
             *args,
             **kwargs,
         )
@@ -50,13 +41,13 @@ class SIMS:
 
         self._trainer.fit(self._model, datamodule=self.datamodule)
 
-    def predict(self, adata: an.AnnData, *args, **kwargs):
-        results = self._model.predict(adata, *args, **kwargs)
+    def predict(self, datafiles: an.AnnData, *args, **kwargs):
+        results = self._model.predict(datafiles, *args, **kwargs)
         results = results.apply(lambda x: self.label_encoder(x))
 
         return results
 
-    def explain(self, adata: an.AnnData, *args, **kwargs):
-        results = self._model.explain(adata, *args, **kwargs)
+    def explain(self, datafiles: an.AnnData, *args, **kwargs):
+        results = self._model.explain(datafiles, *args, **kwargs)
         
         return results

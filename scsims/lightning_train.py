@@ -178,7 +178,7 @@ class DataModule(pl.LightningDataModule):
 
                     labels.loc[:, f"numeric_{self.class_label}"] = self.label_encoder.transform(
                         labels.loc[:, self.class_label]
-                    )
+                    ).astype(int)
 
                     # Don't need to re-index here
                     labels.to_csv(file, index=False, sep=self.sep)
@@ -186,7 +186,7 @@ class DataModule(pl.LightningDataModule):
                 for data in self.datafiles:
                     data.obs.loc[:, f"numeric_{self.class_label}"] = self.label_encoder.transform(
                         data.obs.loc[:, self.class_label]
-                    )
+                    ).astype(int)
 
     def setup(self, stage: Optional[str] = None):
         if not self.setuped:

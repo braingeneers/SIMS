@@ -519,7 +519,7 @@ def generate_split_dataloaders(
     if subset is not None:
         current_labels = current_labels.iloc[subset, :]
 
-    current_labels = current_labels.loc[:, class_label]
+    current_labels = current_labels.loc[:, class_label].astype(int)
 
     if split:
         # Make stratified split on labels

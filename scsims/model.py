@@ -259,6 +259,8 @@ class SIMSClassifier(pl.LightningModule):
                 refgenes=refgenes,
                 **kwargs,
             )
+        
+        return inference_data
 
     def explain(
         self,

@@ -176,20 +176,16 @@ class DataModule(pl.LightningDataModule):
 
                     labels = pd.read_csv(file, sep=self.sep)
 
-                    if f"categorical_{self.class_label}" not in labels.columns:
-                        labels.loc[:, f"categorical_{self.class_label}"] = labels.loc[:, self.class_label]
+                    labels.loc[:, f"numeric_{self.class_label}"] = self.label_encoder.transform(
+                        labels.loc[:, self.class_label]
+                    )
 
-                        labels.loc[:, self.class_label] = self.label_encoder.transform(
-                            labels.loc[:, f"categorical_{self.class_label}"]
-                        )
-
-                        # Don't need to re-index here
-                        labels.to_csv(file, index=False, sep=self.sep)
+                    # Don't need to re-index here
+                    labels.to_csv(file, index=False, sep=self.sep)
             else:
                 for data in self.datafiles:
-                    data.obs.loc[:, f"categorical_{self.class_label}"] = data.obs.loc[:, self.class_label]
-                    data.obs.loc[:, self.class_label] = self.label_encoder.transform(
-                        data.obs.loc[:, f"categorical_{self.class_label}"]
+                    data.obs.loc[:, f"numeric_{self.class_label}"] = self.label_encoder.transform(
+                        data.obs.loc[:, self.class_label]
                     )
 
     def setup(self, stage: Optional[str] = None):

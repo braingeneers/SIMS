@@ -552,6 +552,7 @@ def generate_split_dataloaders(
         train = AnnDatasetMatrix(
             matrix=(data if preprocess else data.X),
             labels=current_labels.values,
+            split=current_labels.index,
             *args,
             **kwargs,
         )

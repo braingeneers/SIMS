@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable, Dict
+from typing import Callable, Dict, Union
 
 import anndata as an
 import numpy as np
@@ -242,11 +242,6 @@ class SIMSClassifier(pl.LightningModule):
         }
 
     def __parse_data(self, inference_data, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
-        if not isinstance(inference_data, (an.AnnData, torch.utils.data.Dataset, torch.utils.data.DataLoader)):
-            raise ValueError(
-                f"inference_data must be an AnnData object, a torch dataset, or a torch dataloader. Got type {type(inference_data)}"
-            )
-
         if isinstance(inference_data, an.AnnData):
             inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)
 
@@ -334,7 +329,7 @@ class SIMSClassifier(pl.LightningModule):
                 self._feature_importances = f
             return f
 
-    def predict(self, inference_data, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+    def predict(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
         """Does inference on data
 
         :param inference_data: Anndata, torch Dataset, or torch DataLoader object to do inference on

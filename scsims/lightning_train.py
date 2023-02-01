@@ -133,19 +133,6 @@ class DataModule(pl.LightningDataModule):
         self.setup()
 
     def prepare_data(self):
-        if not self.prepared:
-            if self.urls is not None:
-                download_raw_expression_matrices(
-                    self.urls,
-                    unzip=self.unzip,
-                    sep=self.sep,
-                    datapath=self.datapath,
-                )
-
-            self._encode_labels()
-            self.prepared = True
-
-    def _encode_labels(self):
         if self.labelfiles is not None:
             unique_targets = np.array(
                 list(
@@ -170,6 +157,7 @@ class DataModule(pl.LightningDataModule):
         self.label_encoder = self.label_encoder.fit(unique_targets)
 
         if not np.issubdtype(unique_targets.dtype, np.number):
+            print(f"Encoding labels, training on new encoded column: numeric_{self.class_label}")
             if self.labelfiles is not None:
                 for idx, file in enumerate(self.labelfiles):
                     print(f"Transforming labelfile {idx + 1}/{len(self.labelfiles)}")
@@ -187,6 +175,8 @@ class DataModule(pl.LightningDataModule):
                     data.obs.loc[:, f"numeric_{self.class_label}"] = self.label_encoder.transform(
                         data.obs.loc[:, self.class_label]
                     ).astype(int)
+
+            self.class_label = f"numeric_{self.class_label}"
 
     def setup(self, stage: Optional[str] = None):
         if not self.setuped:

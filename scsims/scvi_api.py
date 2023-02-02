@@ -9,6 +9,8 @@ from scsims.model import SIMSClassifier
 
 here = pathlib.Path(__file__).parent.absolute()
 
+class UnconfiguredModelError(Exception):
+    pass
 
 class SIMS:
     def __init__(
@@ -47,8 +49,19 @@ class SIMS:
 
         print('Finished training')
 
-    def predict(self, datafiles: an.AnnData, *args, **kwargs):
-        print('Beginnging prediction ...')
+    def predict(self, datafiles: an.AnnData, model_weights=None, *args, **kwargs):
+        print('Beginning prediction ...')
+        if not hasattr(self, '_model') and model_weights is None:
+            raise UnconfiguredModelError(
+                """The model attribute is not configured. This is likely 
+                because you are running the predict method after re-initializing the 
+                SIMS class. Pass the path to the model weights in the model_weights
+                to continue."""
+            )
+
+        if model_weights is not None:
+            self._model = SIMSClassifier.load_from_checkpoint(model_weights, *args, **kwargs)
+
         results = self._model.predict(datafiles, *args, **kwargs)
         results = results.apply(lambda x: self.label_encoder(x))
 

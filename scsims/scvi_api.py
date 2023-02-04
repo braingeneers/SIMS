@@ -15,14 +15,17 @@ class UnconfiguredModelError(Exception):
 class SIMS:
     def __init__(
         self,
-        datafiles: Union[list[str], list[an.AnnData]],
+        datafiles: Union[list[str], list[an.AnnData]] = None,
+        weights_path: str = None,
         *args,
         **kwargs,
     ) -> None:
         print('Setting up data module ...')
+        if weights_path is not None:
+            self._model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs)
+
         self.datamodule = DataModule(
             datafiles=[datafiles] if isinstance(datafiles, an.AnnData) else datafiles, 
-            # since datamodule expects a list of data always
             *args,
             **kwargs,
         )
@@ -49,23 +52,27 @@ class SIMS:
 
         print('Finished training')
 
-    def predict(self, datafiles: an.AnnData, model_weights=None, *args, **kwargs):
-        print('Beginning prediction ...')
-        if not hasattr(self, '_model') and model_weights is None:
+    def predict(self, inference_data: an.AnnData, *args, **kwargs):
+        if not hasattr(self, '_model'):
             raise UnconfiguredModelError(
                 """The model attribute is not configured. This is likely 
                 because you are running the predict method after re-initializing the 
-                SIMS class. Pass the path to the model weights in the model_weights
-                to continue."""
+                SIMS class. Reinitialize the SIMS class with the weights_path
+                pointing to the .ckpt file to continue."""
             )
+        results = self._model.predict(inference_data, *args, **kwargs)
+        try:
+            results = results.apply(lambda x: self.label_encoder.inverse_transform(x))
+        except Exception as e:
+            if "has no attribute" in str(e):
+                print("""
+                    Unable to encoder numeric predictions back to class labels, since the original
+                    labelfile and class_label column were not passed upon initialization. Alternatively, use 
+                    SIMS.decode_predictions([labelfiles]) to convert the numeric labels to string names.
+                """)
+        self.results = results 
 
-        if model_weights is not None:
-            self._model = SIMSClassifier.load_from_checkpoint(model_weights, *args, **kwargs)
-
-        results = self._model.predict(datafiles, *args, **kwargs)
-        results = results.apply(lambda x: self.label_encoder(x))
-
-        print('Finished prediction, returning results ...')
+        print('Finished prediction, returning results and storing in results attribute ...')
         return results
 
     def explain(self, datafiles: an.AnnData, *args, **kwargs):
@@ -73,3 +80,8 @@ class SIMS:
         results = self._model.explain(datafiles, *args, **kwargs)
         
         return results
+
+    def decode_predictions(predictions, labelfiles, class_labels, datafiles, sep=None):
+        labelencoder, _ = DataModule.get_unique_targets(labelfiles, sep, class_labels, datafiles)
+
+        return labelencoder.inverse_transform(predictions)

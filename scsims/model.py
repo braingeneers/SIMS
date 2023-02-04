@@ -242,6 +242,9 @@ class SIMSClassifier(pl.LightningModule):
         }
 
     def __parse_data(self, inference_data, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+        if isinstance(inference_data, str):
+            inference_data = an.read_h5ad(inference_data)
+
         if isinstance(inference_data, an.AnnData):
             inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)
 

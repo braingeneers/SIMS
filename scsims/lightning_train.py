@@ -23,15 +23,15 @@ here = pathlib.Path(__file__).parent.absolute()
 class DataModule(pl.LightningDataModule):
     def __init__(
         self,
-        class_label: str,
+        class_label: str = None,
         datafiles: Union[list[str], list[an.AnnData]] = None,
         labelfiles: list[str] = None,
         urls: Dict[str, list[str]] = None,
         sep: str = None,
         unzip: bool = True,
         datapath: str = "",
-        batch_size=32,
-        num_workers=0,
+        batch_size = 32,
+        num_workers = 0,
         device=("cuda:0" if torch.cuda.is_available() else None),
         split=True,
         *args,
@@ -78,6 +78,9 @@ class DataModule(pl.LightningDataModule):
                 "Either a dictionary of data to download, or paths to datafiles and labelfiles are supported, but not both."
             )
 
+        if labelfiles is not None or datafiles is not None:
+            assert class_label is not None, "If labelfiles/datafiles are passed, we need a class label for training."
+
         self.device = device
         self.class_label = class_label
         self.urls = urls
@@ -95,15 +98,6 @@ class DataModule(pl.LightningDataModule):
         else:
             self.datafiles = datafiles
             self.labelfiles = labelfiles
-
-        if isinstance(self.datafiles[0], str):
-            suffix = pathlib.Path(self.datafiles[0]).suffix
-            if suffix == ".tsv" or suffix == ".csv":
-                raise NotImplementedError(
-                    "Need to implement support for handling csv/tsv files in the generate_dataloaders class."
-                )
-
-            self.datafiles = [an.read_h5ad(file, backed="r+") for file in self.datafiles]
 
         if self.labelfiles is not None:
             # Warn user in case tsv/csv ,/\t don't match, this can be annoying to diagnose
@@ -132,20 +126,21 @@ class DataModule(pl.LightningDataModule):
         self.prepare_data()
         self.setup()
 
-    def prepare_data(self):
-        if self.labelfiles is not None:
+    @staticmethod
+    def get_unique_targets(labelfiles, sep, class_label, datafiles):
+        if labelfiles is not None:
             unique_targets = np.array(
                 list(
                     set(
                         np.concatenate(
-                            [pd.read_csv(df, sep=self.sep).loc[:, self.class_label].unique() for df in self.labelfiles]
+                            [pd.read_csv(df, sep=sep).loc[:, class_label].unique() for df in labelfiles]
                         )
                     )
                 )
             )
-        elif isinstance(self.datafiles[0], an.AnnData):
+        elif isinstance(datafiles[0], an.AnnData):
             unique_targets = np.array(
-                list(set(np.concatenate([datafile.obs.loc[:, self.class_label].unique() for datafile in self.datafiles])))
+                list(set(np.concatenate([datafile.obs.loc[:, class_label].unique() for datafile in datafiles])))
             )
         else:
             raise NotImplementedError(
@@ -153,9 +148,19 @@ class DataModule(pl.LightningDataModule):
             )
 
         print("Building LabelEncoder.")
-        self.label_encoder = LabelEncoder()
-        self.label_encoder = self.label_encoder.fit(unique_targets)
+        label_encoder = LabelEncoder().fit(unique_targets)
 
+        return label_encoder, unique_targets
+
+    def prepare_data(self):
+        labelencoder, unique_targets = DataModule.get_unique_targets(
+            self.labelfiles,
+            self.sep,
+            self.class_label,
+            self.datafiles,
+        )
+
+        self.label_encoder = labelencoder
         if not np.issubdtype(unique_targets.dtype, np.number):
             print(f"Encoding labels, training on new encoded column: numeric_{self.class_label}")
             if self.labelfiles is not None:
@@ -179,7 +184,16 @@ class DataModule(pl.LightningDataModule):
             self.class_label = f"numeric_{self.class_label}"
 
     def setup(self, stage: Optional[str] = None):
-        if not self.setuped:
+        if not self.setuped and self.datafiles is not None:
+            if isinstance(self.datafiles[0], str):
+                suffix = pathlib.Path(self.datafiles[0]).suffix
+                if suffix == ".tsv" or suffix == ".csv":
+                    raise NotImplementedError(
+                        "Need to implement support for handling csv/tsv files in the generate_dataloaders class."
+                    )
+
+                self.datafiles = [an.read_h5ad(file, backed="r+") for file in self.datafiles]
+
             if self.split:
                 print("Creating train/val/test DataLoaders...")
             else:

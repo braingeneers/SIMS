@@ -16,7 +16,7 @@ requirements = [
     "scanpy",
     "anndata",
     "pytorch_tabnet",
-    "torchmetrics",
+    "torchmetrics==0.10.3",
     "sklearn",
     "scipy",
     "wandb",

@@ -501,14 +501,6 @@ def generate_split_dataloaders(
                     refgenes=refgenes,
                     currgenes=currgenes,
                 )
-        # TODO: add support for delimiteddataset
-        # elif suffix == '.csv' or suffix == '.tsv':
-        #     data = DelimitedDataset(
-        #         filename=datafile,
-        #         labelname=labelfile,
-        #         class_label=class_label,
-        #         sep=sep,
-        #     )
     # if we are using a path to a labelfile, read it in, otherwise
     # just grab the dataframe from the .obs attribute of the anndata object
     if labelfile is not None:
@@ -519,7 +511,7 @@ def generate_split_dataloaders(
     if subset is not None:
         current_labels = current_labels.iloc[subset, :]
 
-    current_labels = current_labels.loc[:, class_label].astype(int)
+    current_labels = current_labels.loc[:, class_label]
 
     if split:
         # Make stratified split on labels
@@ -536,15 +528,12 @@ def generate_split_dataloaders(
             test_size=test_prop,
             random_state=(42 if deterministic else None),
         )
-        
+
         train, val, test = (
             AnnDatasetMatrix(
-                # because if we preprocess data becomes a matrix, not an anndata object
                 matrix=(data[split.index] if preprocess else data.X[split.index, :]),
                 labels=split.values,
                 split=split.index,
-                *args,
-                **kwargs,
             )
             for split in [trainsplit, valsplit, testsplit]
         )

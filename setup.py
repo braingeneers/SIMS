@@ -7,19 +7,19 @@ import pathlib
 from setuptools import find_packages, setup
 
 requirements = [
-    "pandas",
-    "numpy",
-    "tqdm",
-    "boto3",
-    "torch",
-    "pytorch_lightning",
-    "scanpy",
-    "anndata",
-    "pytorch_tabnet",
+    "pandas==1.4.1",
+    "numpy==1.20.3",
+    "tqdm==4.64.0",
+    "boto3==1.23.4",
+    "torch==1.11.0",
+    "pytorch_lightning==1.9.3",
+    "scanpy==1.9.1",
+    "anndata==0.8.0",
+    "pytorch_tabnet==3.1.1",
     "torchmetrics==0.10.3",
-    "sklearn",
-    "scipy",
-    "wandb",
+    "sklearn==1.0.2",
+    "scipy==1.8.0",
+    "wandb==0.12.16",
 ]
 
 setup_requirements = requirements.copy()

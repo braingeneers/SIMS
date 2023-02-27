@@ -1,6 +1,8 @@
 # **SIMS**: Scalable, Interpretable Modeling for Single-Cell RNA-Seq Data Classification
 
-SIMS is a pipeline for building interpretable and accurate classifiers for identifying any target on single-cell rna-seq data. The SIMS model is based on [TabNet](https://arxiv.org/abs/1908.07442), a self-attention based model specifically built for large-scale tabular datasets.
+SIMS is a pipeline for building interpretable and accurate classifiers for identifying any target on single-cell rna-seq data. The SIMS model is based on [
+
+a sequential transformer](https://arxiv.org/abs/1908.07442), a transformer model specifically built for large-scale tabular datasets.
 
 SIMS takes in a list of arbitrarily many expression matrices along with their corresponding target variables. We assume the matrix form `cell x gene`, and NOT `gene x cell`, since our training samples are the transcriptomes of individual cells.
 
@@ -47,7 +49,7 @@ explainability_matrix = sims.explain('my/new/unlabeled.h5ad') # this can also be
 ```
 
 ## Custom training jobs / logging
-To customize the underlying `pl.Trainer` and Tabnet model params, we can initialize the SIMS model like 
+To customize the underlying `pl.Trainer` and SIMS model params, we can initialize the SIMS model like 
 ```python 
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
@@ -70,4 +72,4 @@ sims.setup_trainer(
 )
 sims.train()
 ```
-This will train the TabNet model on the given expression matrices with target variable given by the `class_label` column in each label file.
+This will train the SIMS model on the given expression matrices with target variable given by the `class_label` column in each label file.

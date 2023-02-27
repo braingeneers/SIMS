@@ -10,12 +10,15 @@ The data is formatted like so:
 - All label files contain a common column, known as the `class_label`, on which to train the model 
 - `datafiles` and `labelfiles` are the absolute paths to the expression matrices and labels, respectively
 
-The code is run with `python`. To use the package, we recommend using a virtual environment such as [miniconda](https://docs.conda.io/en/latest/miniconda.html) which will allow you to install packages without harming your computer's system `python`.  
+The code is run with `python`. To use the package, we recommend using a virtual environment such as [miniconda](https://docs.conda.io/en/latest/miniconda.html) which will allow you to install packages without harming your system `python`.  
 
+If using conda, run 
 1. Create a new virtual environment with `conda create --name=<NAME> python=3.9`
 2. Enter into your virtual environment with `conda activate NAME`
-3. Install the SIMS package with `pip install git+https://github.com/braingeneers/SIMS.git`
-4. Set up and run the model training in a `.py` file. A tutorial on how to do so is shown below.
+
+Otherwise, enter your virtual environment of choice and
+1. Install the SIMS package with `pip install git+https://github.com/braingeneers/SIMS.git`
+2. Set up the model training code in a `MYFILE.py` file, and run it with `python MYFILE.py`. A tutorial on how to set up training code is shown below.
 
 A call to generate and train the SIMS model could look like the following:
 

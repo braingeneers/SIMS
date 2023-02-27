@@ -1,8 +1,6 @@
 # **SIMS**: Scalable, Interpretable Modeling for Single-Cell RNA-Seq Data Classification
 
-SIMS is a pipeline for building interpretable and accurate classifiers for identifying any target on single-cell rna-seq data. The SIMS model is based on [
-
-a sequential transformer](https://arxiv.org/abs/1908.07442), a transformer model specifically built for large-scale tabular datasets.
+SIMS is a pipeline for building interpretable and accurate classifiers for identifying any target on single-cell rna-seq data. The SIMS model is based on [a sequential transformer](https://arxiv.org/abs/1908.07442), a transformer model specifically built for large-scale tabular datasets.
 
 SIMS takes in a list of arbitrarily many expression matrices along with their corresponding target variables. We assume the matrix form `cell x gene`, and NOT `gene x cell`, since our training samples are the transcriptomes of individual cells.
 

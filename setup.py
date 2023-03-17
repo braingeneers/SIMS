@@ -8,7 +8,7 @@ from setuptools import find_packages, setup
 
 requirements = [
     "pandas==1.4.1",
-    "numpy==1.20.3",
+    "numpy",
     "tqdm==4.64.0",
     "boto3==1.23.4",
     "torch==1.11.0",

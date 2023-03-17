@@ -17,7 +17,7 @@ requirements = [
     "anndata==0.8.0",
     "pytorch_tabnet==3.1.1",
     "torchmetrics==0.10.3",
-    "sklearn==1.0.2",
+    "scikit-learn==1.0.2",
     "scipy==1.8.0",
     "wandb==0.12.16",
 ]

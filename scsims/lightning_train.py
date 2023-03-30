@@ -123,8 +123,8 @@ class DataModule(pl.LightningDataModule):
         self.prepared = False
         self.setuped = False
 
-        self.prepare_data()
         self.setup()
+        self.prepare_data()
 
     @staticmethod
     def get_unique_targets(labelfiles, sep, class_label, datafiles):
@@ -276,46 +276,3 @@ class DataModule(pl.LightningDataModule):
     @cached_property
     def output_dim(self):
         return self.num_labels
-
-
-def download_raw_expression_matrices(datasets: Dict[str, Tuple[str, str]], unzip: bool = True, datapath: str = None) -> None:
-    """Downloads all raw datasets and label sets from cells.ucsc.edu, and then unzips them locally
-
-    :param datasets: Dictionary of datasets such that each key maps to a tuple containing the expression matrix csv url in the first element,
-                    and the label csv url in the second url, defaults to None
-    :type datasets: Dict[str, Tuple[str, str]], optional
-    :param upload: Whether or not to also upload data to the braingeneersdev S3 bucket , defaults to False
-    :type upload: bool, optional
-    :param unzip: Whether to also unzip expression matrix, defaults to False
-    :type unzip: bool, optional
-    :param datapath: Path to folder to download data to. Otherwise, defaults to data/
-    :type datapath: str, optional
-    """
-    # {local file name: [dataset url, labelset url]}
-    data_path = datapath if datapath is not None else os.path.join(here, "..", "..", "..", "data")
-
-    for file, links in datasets.items():
-        datafile_path = os.path.join(data_path, "raw", file)
-
-        labelfile = f"{file[:-4]}_labels.tsv"
-
-        datalink, _ = links
-
-        # First, make the required folders if they do not exist
-        for dir in "raw":
-            os.makedirs(os.path.join(data_path, dir), exist_ok=True)
-
-        # Download and unzip data file if it doesn't exist
-        if not os.path.isfile(datafile_path):
-            print(f"Downloading zipped data for {file}")
-            urllib.request.urlretrieve(
-                datalink,
-                f"{datafile_path}.gz",
-            )
-
-            if unzip:
-                print(f"Unzipping {file}")
-                os.system(f"zcat < {datafile_path}.gz > {datafile_path}")
-
-                print(f"Deleting compressed data")
-                os.system(f"rm -rf {datafile_path}.gz")

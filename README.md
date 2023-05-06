@@ -20,8 +20,11 @@ To train a model, we can set up a SIMS class in the following way:
 
 ```python 
 from scsims import SIMS
+from pytorch_lightning.loggers import WandbLogger
+logger = WandbLogger(offline=True)
 
-sims = SIMS(datafiles=['my/data/file.h5ad', 'my/other/data.h5ad'], class_label='class_label')
+sims = SIMS(datafiles=['my/data/file.h5ad'], class_label='class_label')
+sims.setup_trainer(accelerator="gpu", devices=1, logger=logger)
 sims.train()
 ```
 

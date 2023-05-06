@@ -40,16 +40,6 @@ class DataModule(pl.LightningDataModule):
         """
         Creates the DataModule for PyTorch-Lightning training.
 
-        This either takes a dictionary of URLs with the format
-            urls = {dataset_name.extension:
-                        [
-                            datafileurl,
-                            labelfileurl,
-                        ]
-                    }
-
-        OR two lists containing the absolute paths to the datafiles and labelfiles, respectively.
-
         :param class_label: Class label to train on. Must be in all label files
         :type class_label: str
         :param datafiles: List of absolute paths to datafiles, if not using URLS. defaults to None
@@ -69,7 +59,6 @@ class DataModule(pl.LightningDataModule):
         :param assume_numeric_label: If the class_label column in all labelfiles is numeric. Otherwise, we automatically apply sklearn.preprocessing.LabelEncoder to the intersection of all possible labels, defaults to True
         :type assume_numeric_label: bool, optional
         :raises ValueError: If both a dictionary of URL's is passed and labelfiles/datafiles are passed. We can only handle one, not a mix of both, since there isn't a way to determine easily if a string is an external url or not.
-
         """
         super().__init__()
         # Make sure we don't have datafiles/labelfiles AND urls at start

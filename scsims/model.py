@@ -352,6 +352,7 @@ class SIMSClassifier(pl.LightningModule):
                 else:
                     data = X
 
+                data = data.float()
                 res, _ = self(data)
                 _, top_preds = res.topk(3, axis=1)  # to get indices
                 preds.extend(top_preds.numpy())
@@ -419,3 +420,6 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
     }
 
     return metrics
+
+        
+

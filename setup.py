@@ -2,15 +2,16 @@
 
 """The setup script."""
 
+import anndata as an
 import pathlib
 
 from setuptools import find_packages, setup
 
 requirements = [
-    "pandas==1.4.1",
-    "numpy==1.20.3",
-    "tqdm==4.64.0",
-    "boto3==1.23.4",
+    "pandas",
+    "numpy",
+    "tqdm",
+    "boto3",
     "torch==1.11.0",
     "pytorch_lightning==1.9.3",
     "scanpy==1.9.1",

@@ -86,7 +86,7 @@ class SIMS:
     def explain(self, datafiles: an.AnnData, *args, **kwargs):
         print('Computing explainability matrix ...')
         results = self._model.explain(datafiles, *args, **kwargs)
-        
+
         return results
 
     def decode_predictions(predictions, labelfiles, class_labels, datafiles, sep=None):

@@ -112,8 +112,8 @@ class DataModule(pl.LightningDataModule):
         self.prepared = False
         self.setuped = False
 
-        self.setup()
         self.prepare_data()
+        self.setup()
 
     @staticmethod
     def get_unique_targets(labelfiles, sep, class_label, datafiles):
@@ -165,7 +165,8 @@ class DataModule(pl.LightningDataModule):
                     # Don't need to re-index here
                     labels.to_csv(file, index=False, sep=self.sep)
             else:
-                for data in self.datafiles:
+                for idx, data in enumerate(self.datafiles):
+                    print(f"Transforming datafile {idx + 1}/{len(self.datafiles)}")
                     data.obs.loc[:, f"numeric_{self.class_label}"] = self.label_encoder.transform(
                         data.obs.loc[:, self.class_label]
                     ).astype(int)

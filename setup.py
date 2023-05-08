@@ -11,7 +11,7 @@ requirements = [
     "numpy",
     "tqdm",
     "boto3",
-    "torch",
+    "torch<2.0", # for tabnet
     "pytorch_lightning",
     "scanpy",
     "anndata",

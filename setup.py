@@ -20,6 +20,7 @@ requirements = [
     "scikit-learn",
     "scipy",
     "wandb",
+    "urllib3==1.26.15"
 ]
 
 setup_requirements = requirements.copy()

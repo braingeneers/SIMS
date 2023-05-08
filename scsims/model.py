@@ -404,19 +404,21 @@ def median_f1(tps, fps, fns):
 
 
 def aggregate_metrics(num_classes) -> Dict[str, Callable]:
+    task = "binary" if num_classes == 2 else "multiclass"
+    num_classes = None if num_classes == 2 else num_classes
     metrics = {
         # Accuracies
-        "micro_accuracy": accuracy,
-        "macro_accuracy": partial(accuracy, num_classes=num_classes, average="macro"),
-        "weighted_accuracy": partial(accuracy, num_classes=num_classes, average="weighted"),
+        "micro_accuracy": partial(accuracy, task=task, num_classes=num_classes, average="micro"),
+        "macro_accuracy": partial(accuracy, task=task, num_classes=num_classes, average="macro"),
+        "weighted_accuracy": partial(accuracy, task=task, num_classes=num_classes, average="weighted"),
         # Precision, recall and f1s, all macro weighted
-        "precision": partial(precision, num_classes=num_classes, average="macro"),
-        "recall": partial(recall, num_classes=num_classes, average="macro"),
-        "f1": partial(f1_score, num_classes=num_classes, average="macro"),
+        "precision": partial(precision, task=task, num_classes=num_classes, average="macro"),
+        "recall": partial(recall, task=task, num_classes=num_classes, average="macro"),
+        "f1": partial(f1_score, task=task, num_classes=num_classes, average="macro"),
         # Random stuff I might want
-        "specificity": partial(specificity, num_classes=num_classes, average="macro"),
+        "specificity": partial(specificity, task=task, num_classes=num_classes, average="macro"),
         # 'confusion_matrix': partial(confusion_matrix, num_classes=num_classes),
-        "auroc": partial(auroc, num_classes=num_classes, average="macro"),
+        "auroc": partial(auroc, task=task, num_classes=num_classes, average="macro"),
     }
 
     return metrics

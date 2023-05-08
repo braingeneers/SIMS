@@ -3,7 +3,7 @@ from typing import Union
 
 import anndata as an
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, Timer
+from pytorch_lightning.callbacks import ModelCheckpoint, Timer, EarlyStopping
 
 from scsims.lightning_train import DataModule
 from scsims.model import SIMSClassifier
@@ -38,15 +38,17 @@ class SIMS:
         print('Setting up model ...')
         self._model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
 
-    def setup_trainer(self, *args, **kwargs):
+    def setup_trainer(self, early_stopping: bool, *args, **kwargs):
         print('Setting up trainer ...')
         if 'callbacks' in kwargs:
             if not any(isinstance, ModelCheckpoint):
                 kwargs['callbacks'].append(ModelCheckpoint())
             if not any(isinstance, Timer):
-                kwargs['callbacks'].append(ModelCheckpoint())
+                kwargs['callbacks'].append(Timer())
+            if not any(isinstance, EarlyStopping):
+                kwargs['callbacks'].append(EarlyStopping(monitor='val_loss', patience=10))
         else:
-            callbacks = [ModelCheckpoint(), Timer()]
+            callbacks = [ModelCheckpoint(), Timer(), EarlyStopping(monitor='val_loss', patience=10)]
         self._trainer = pl.Trainer(*args, **kwargs, callbacks=callbacks)
 
     def train(self, *args, **kwargs):

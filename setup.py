@@ -2,7 +2,6 @@
 
 """The setup script."""
 
-import anndata as an
 import pathlib
 
 from setuptools import find_packages, setup
@@ -12,15 +11,15 @@ requirements = [
     "numpy",
     "tqdm",
     "boto3",
-    "torch==1.11.0",
-    "pytorch_lightning==1.9.3",
-    "scanpy==1.9.1",
-    "anndata==0.8.0",
-    "pytorch_tabnet==3.1.1",
-    "torchmetrics==0.8.2",
-    "scikit-learn==1.0.2",
-    "scipy==1.8.0",
-    "wandb==0.12.16",
+    "torch",
+    "pytorch_lightning",
+    "scanpy",
+    "anndata",
+    "pytorch_tabnet",
+    "torchmetrics",
+    "scikit-learn",
+    "scipy",
+    "wandb",
 ]
 
 setup_requirements = requirements.copy()

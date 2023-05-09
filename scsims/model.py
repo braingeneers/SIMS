@@ -210,13 +210,13 @@ class SIMSClassifier(pl.LightningModule):
         return f1s
 
     # Calculation on epoch end, for "median F1 score"
-    def training_epoch_end(self, step_outputs):
+    def on_train_epoch_end(self, step_outputs):
         self._epoch_end(step_outputs, "train")
 
-    def validation_epoch_end(self, step_outputs):
+    def on_validation_epoch_end(self, step_outputs):
         self._epoch_end(step_outputs, "val")
 
-    def test_epoch_end(self, step_outputs):
+    def on_test_epoch_end(self, step_outputs):
         self._epoch_end(step_outputs, "test")
 
     def configure_optimizers(self):

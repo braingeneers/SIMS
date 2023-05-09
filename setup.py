@@ -12,7 +12,7 @@ requirements = [
     "tqdm",
     "boto3",
     "torch<2.0", # for tabnet
-    "pytorch_lightning",
+    "lightning==2.0.2",
     "scanpy",
     "anndata",
     "pytorch_tabnet",

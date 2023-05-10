@@ -12,7 +12,7 @@ If using conda, run
 2. Enter into your virtual environment with `conda activate NAME`
 
 Otherwise, enter your virtual environment of choice and
-1. Install the SIMS package with `pip install git+https://github.com/braingeneers/SIMS.git`
+1. Install the SIMS package with `pip install --use-pep=517 git+https://github.com/braingeneers/SIMS.git`
 2. Set up the model training code in a `MYFILE.py` file, and run it with `python MYFILE.py`. A tutorial on how to set up training code is shown below.
 
 ## Training and inference

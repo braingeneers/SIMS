@@ -237,10 +237,10 @@ class DataModule(pl.LightningDataModule):
         val = []
         if self.labelfiles is not None:
             for file in self.labelfiles:
-                val.extend(list(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].values))
+                val.extend(pd.read_csv(file, sep=self.sep).loc[:, self.class_label].unique())
         else:
             for file in self.datafiles:
-                val.extend(list(file.obs.loc[:, self.class_label].values))
+                val.extend(file.obs.loc[:, self.class_label].unique())
 
         return len(set(val))
 

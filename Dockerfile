@@ -28,8 +28,4 @@ RUN pip install matplotlib \
     scipy
 
 RUN pip3 install --use-pep517 --no-cache git+https://github.com/braingeneers/SIMS.git
-
-# Is this breaking everything
-# RUN pip install scvi-tools
-
 COPY . .

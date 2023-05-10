@@ -1,4 +1,4 @@
-FROM anibali/pytorch:1.10.2-cuda11.3
+FROM anibali/pytorch:1.13.0-cuda11.8
 USER root
 
 WORKDIR /src
@@ -12,8 +12,6 @@ RUN sudo apt-get --allow-releaseinfo-change update && \
     sudo \
     vim
 
-RUN curl -L https://bit.ly/glances | /bin/bash
-
 RUN pip install matplotlib \
     seaborn \
     pytorch-lightning \
@@ -22,14 +20,14 @@ RUN pip install matplotlib \
     pytorch-tabnet \
     scanpy \
     anndata \
-    sklearn \
+    scikit-learn \
     boto3 \ 
     tenacity \ 
     pandas \
     plotly \
     scipy
 
-RUN pip install git+https://github.com/jlehrer1/sims
+RUN pip3 install --use-pep517 --no-cache git+https://github.com/braingeneers/SIMS.git
 
 # Is this breaking everything
 # RUN pip install scvi-tools

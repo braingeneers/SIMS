@@ -179,46 +179,6 @@ class SIMSClassifier(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         return self._step(batch, "test")
 
-    def _epoch_end(self, step_outputs, tag):
-        tps, fps, fns = [], [], []
-
-        for i in range(len(step_outputs)):
-            res = step_outputs[i]
-            tp, fp, fn = res["tp"], res["fp"], res["fn"]
-
-            tps.append(tp.cpu().numpy())
-            fps.append(fp.cpu().numpy())
-            fns.append(fn.cpu().numpy())
-
-        tp = np.sum(np.array(tps), axis=0)
-        fp = np.sum(np.array(fps), axis=0)
-        fn = np.sum(np.array(fns), axis=0)
-
-        precision = tp / (tp + fp)
-        recall = tp / (tp + fn)
-        f1s = 2 * (precision * recall) / (precision + recall)
-        f1s = np.nan_to_num(f1s)
-
-        self.log(
-            f"{tag}_median_f1",
-            np.nanmedian(f1s),
-            logger=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
-        return f1s
-
-    # Calculation on epoch end, for "median F1 score"
-    def on_train_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs, "train")
-
-    def on_validation_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs, "val")
-
-    def on_test_epoch_end(self, step_outputs):
-        self._epoch_end(step_outputs, "test")
-
     def configure_optimizers(self):
         if "optimizer" in self.optim_params:
             optimizer = self.optim_params.pop("optimizer")

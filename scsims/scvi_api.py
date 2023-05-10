@@ -16,7 +16,7 @@ class UnconfiguredModelError(Exception):
 class SIMS:
     def __init__(
         self,
-        adata: Union[list[str], list[an.AnnData]] = None,
+        datafiles: Union[list[str], list[an.AnnData]] = None,
         weights_path: str = None,
         *args,
         **kwargs,
@@ -26,7 +26,7 @@ class SIMS:
             self._model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs)
 
         self.datamodule = DataModule(
-            datafiles=[adata] if isinstance(adata, an.AnnData) else adata, 
+            datafiles=[datafiles] if isinstance(datafiles, an.AnnData) else datafiles, 
             *args,
             **kwargs,
         )
@@ -87,13 +87,13 @@ class SIMS:
         print('Finished prediction, returning results and storing in results attribute ...')
         return results
 
-    def explain(self, adata: an.AnnData, *args, **kwargs):
+    def explain(self, datafiles: an.AnnData, *args, **kwargs):
         print('Computing explainability matrix ...')
-        results = self._model.explain(adata, *args, **kwargs)
+        results = self._model.explain(datafiles, *args, **kwargs)
 
         return results
 
-    def decode_predictions(predictions, labelfiles, class_labels, adata, sep=None):
-        labelencoder, _ = DataModule.get_unique_targets(labelfiles, sep, class_labels, adata)
+    def decode_predictions(predictions, labelfiles, class_labels, datafiles, sep=None):
+        labelencoder, _ = DataModule.get_unique_targets(labelfiles, sep, class_labels, datafiles)
 
         return labelencoder.inverse_transform(predictions)

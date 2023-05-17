@@ -36,6 +36,16 @@ class SIMS:
 
     def setup_model(self, *args, **kwargs):
         print('Setting up model ...')
+        if 'model_size' in kwargs:
+            if kwargs['model_size'] == "big":
+                kwargs['n_a'] = 64
+                kwargs['n_d'] = 64
+            if kwargs['model_size'] == "medium":
+                kwargs['n_a'] = 32
+                kwargs['n_d'] = 32
+            if kwargs['model_size'] == "small":
+                kwargs['n_a'] = 8
+                kwargs['n_d'] = 8
         self._model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
 
     def setup_trainer(self, early_stopping_patience: int = 20, *args, **kwargs):

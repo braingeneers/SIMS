@@ -50,8 +50,8 @@ class SIMS:
             if not any([isinstance(callback, EarlyStopping) for callback in callbacks]):
                 callbacks.append(EarlyStopping(monitor='val_loss', patience=early_stopping_patience))
         else:
-            callbacks = [ModelCheckpoint(), Timer(), EarlyStopping(monitor='val_loss', patience=early_stopping_patience)]
-        self._trainer = pl.Trainer(*args, **kwargs, callbacks=callbacks)
+            kwargs['callbacks'] = [ModelCheckpoint(), Timer(), EarlyStopping(monitor='val_loss', patience=early_stopping_patience)]
+        self._trainer = pl.Trainer(*args, **kwargs)
 
     def train(self, *args, **kwargs):
         print('Beginning training')

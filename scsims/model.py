@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Callable, Dict, Union
 
+import os
 import anndata as an
 import numpy as np
 import pandas as pd
@@ -16,7 +17,7 @@ from torchmetrics.functional.classification.stat_scores import _stat_scores_upda
 from tqdm import tqdm
 
 from scsims.data import CollateLoader
-from scsims.inference import MatrixDatasetWithoutall_labels
+from scsims.inference import MatrixDatasetWithLabelsFile
 
 
 class SIMSClassifier(pl.LightningModule):
@@ -201,12 +202,21 @@ class SIMSClassifier(pl.LightningModule):
             "monitor": "train_loss",
         }
 
-    def __parse_data(self, inference_data, batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+    def __parse_data(
+            self,
+            inference_data,
+            batch_size=64,
+            num_workers=os.cpu_count(),
+            rows=None,
+            currgenes=None,
+            refgenes=None,
+            **kwargs
+        ) -> torch.utils.data.DataLoader:
         if isinstance(inference_data, str):
             inference_data = an.read_h5ad(inference_data)
 
         if isinstance(inference_data, an.AnnData):
-            inference_data = MatrixDatasetWithoutall_labels(inference_data.X[rows, :] if rows is not None else inference_data.X)
+            inference_data = MatrixDatasetWithLabelsFile(inference_data.X[rows, :] if rows is not None else inference_data.X)
 
         if not isinstance(inference_data, torch.utils.data.DataLoader):
             inference_data = CollateLoader(
@@ -217,15 +227,15 @@ class SIMSClassifier(pl.LightningModule):
                 refgenes=refgenes,
                 **kwargs,
             )
-        
+
         return inference_data
 
     def explain(
         self,
         anndata,
         rows=None,
-        batch_size=4,
-        num_workers=0,
+        batch_size=64,
+        num_workers=os.cpu_count(),
         currgenes=None,
         refgenes=None,
         cache=False,
@@ -238,7 +248,7 @@ class SIMSClassifier(pl.LightningModule):
             return self._explain_matrix
 
         self.network.eval()
-        res_explain = []
+        res_explain = np.zeros((loader.dataset.shape[0], self.network.input_dim))
         all_labels = np.zeros(loader.dataset.shape[0])
 
         for batch_nb, data in enumerate(tqdm(loader)):
@@ -258,7 +268,7 @@ class SIMSClassifier(pl.LightningModule):
                 self.reducing_matrix,
             )
 
-            res_explain.append(original_feat_explain)
+            np.append(res_explain, original_feat_explain, axis=0)
 
             if batch_nb == 0:
                 res_masks = masks
@@ -297,7 +307,15 @@ class SIMSClassifier(pl.LightningModule):
 
         :param inference_data: Anndata, torch Dataset, or torch DataLoader object to do inference on
         """
-        loader = self.__parse_data(inference_data, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
+        loader = self.__parse_data(
+            inference_data,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            rows=rows,
+            currgenes=currgenes,
+            refgenes=refgenes,
+            **kwargs
+        )
 
         preds = []
         all_labels = []
@@ -383,5 +401,5 @@ def aggregate_metrics(num_classes) -> Dict[str, Callable]:
 
     return metrics
 
-        
+
 

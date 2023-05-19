@@ -16,7 +16,7 @@ from torchmetrics.functional.classification.stat_scores import _stat_scores_upda
 from tqdm import tqdm
 
 from scsims.data import CollateLoader
-from scsims.inference import MatrixDatasetWithoutLabels
+from scsims.inference import MatrixDatasetWithoutall_labels
 
 
 class SIMSClassifier(pl.LightningModule):
@@ -206,7 +206,7 @@ class SIMSClassifier(pl.LightningModule):
             inference_data = an.read_h5ad(inference_data)
 
         if isinstance(inference_data, an.AnnData):
-            inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)
+            inference_data = MatrixDatasetWithoutall_labels(inference_data.X[rows, :] if rows is not None else inference_data.X)
 
         if not isinstance(inference_data, torch.utils.data.DataLoader):
             inference_data = CollateLoader(
@@ -239,13 +239,13 @@ class SIMSClassifier(pl.LightningModule):
 
         self.network.eval()
         res_explain = []
-        labels = []
+        all_labels = np.zeros(loader.dataset.shape[0])
 
         for batch_nb, data in enumerate(tqdm(loader)):
             # if we are running this on already labeled pairs and not just for inference
             if isinstance(data, tuple):
                 X, label = data
-                labels.extend(label.numpy())
+                np.append(all_labels, label, axis=0)
             else:
                 X = data
 
@@ -274,7 +274,7 @@ class SIMSClassifier(pl.LightningModule):
         if cache:
             self._explain_matrix = res_explain
 
-        return res_explain, labels
+        return res_explain, all_labels
 
     def _compute_feature_importances(self, dataloader):
         M_explain, _ = self.explain(dataloader, normalize=False)
@@ -300,15 +300,15 @@ class SIMSClassifier(pl.LightningModule):
         loader = self.__parse_data(inference_data, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
 
         preds = []
-        labels = []
+        all_labels = []
         prev_network_state = self.network.training
         self.network.eval()
         with torch.no_grad():
             for X in tqdm(loader):
-                # Some dataloaders will have labels, handle this case
+                # Some dataloaders will have all_labels, handle this case
                 if len(X) == 2:
                     data, label = X
-                    labels.extend(label.numpy())
+                    all_labels.extend(label.numpy())
                 else:
                     data = X
 
@@ -331,8 +331,8 @@ class SIMSClassifier(pl.LightningModule):
             encoder = self.datamodule.label_encoder
             final = final.apply(lambda x: encoder.inverse_transform(x))
 
-        if labels != []:
-            final["actual_label"] = labels
+        if all_labels != []:
+            final["actual_label"] = all_labels
 
         # if network was in training mode before inference, set it back to that
         if prev_network_state:

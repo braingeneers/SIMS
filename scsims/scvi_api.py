@@ -38,13 +38,13 @@ class SIMS:
         print('Setting up model ...')
         if 'model_size' in kwargs:
             assert kwargs['model_size'] in ["big", "medium", "small"], "if specified, model_size must be one of 'big', 'medium', or 'small'"
-            if kwargs['model_size'] == "big":
+            if kwargs['model_size'] == "venti":
                 kwargs['n_a'] = 64
                 kwargs['n_d'] = 64
-            if kwargs['model_size'] == "medium":
+            if kwargs['model_size'] == "grande":
                 kwargs['n_a'] = 32
                 kwargs['n_d'] = 32
-            if kwargs['model_size'] == "small":
+            if kwargs['model_size'] == "tall":
                 kwargs['n_a'] = 8
                 kwargs['n_d'] = 8
         self._model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)

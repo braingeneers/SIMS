@@ -17,7 +17,7 @@ from torchmetrics.functional.classification.stat_scores import _stat_scores_upda
 from tqdm import tqdm
 
 from scsims.data import CollateLoader
-from scsims.inference import MatrixDatasetWithLabelsFile
+from scsims.inference import MatrixDatasetWithoutLabels
 
 
 class SIMSClassifier(pl.LightningModule):
@@ -202,7 +202,7 @@ class SIMSClassifier(pl.LightningModule):
             "monitor": "train_loss",
         }
 
-    def __parse_data(
+    def _parse_data(
             self,
             inference_data,
             batch_size=64,
@@ -216,7 +216,7 @@ class SIMSClassifier(pl.LightningModule):
             inference_data = an.read_h5ad(inference_data)
 
         if isinstance(inference_data, an.AnnData):
-            inference_data = MatrixDatasetWithLabelsFile(inference_data.X[rows, :] if rows is not None else inference_data.X)
+            inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)
 
         if not isinstance(inference_data, torch.utils.data.DataLoader):
             inference_data = CollateLoader(
@@ -242,7 +242,7 @@ class SIMSClassifier(pl.LightningModule):
         normalize=False,
         **kwargs,
     ):
-        loader = self.__parse_data(anndata, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
+        loader = self._parse_data(anndata, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
 
         if cache and self._explain_matrix is not None:
             return self._explain_matrix
@@ -307,7 +307,7 @@ class SIMSClassifier(pl.LightningModule):
 
         :param inference_data: Anndata, torch Dataset, or torch DataLoader object to do inference on
         """
-        loader = self.__parse_data(
+        loader = self._parse_data(
             inference_data,
             batch_size=batch_size,
             num_workers=num_workers,
@@ -317,8 +317,8 @@ class SIMSClassifier(pl.LightningModule):
             **kwargs
         )
 
-        preds = []
-        all_labels = []
+        preds = np.zeros((loader.dataset.shape[0], 3))
+        all_labels = np.zeros(loader.dataset.shape[0])
         prev_network_state = self.network.training
         self.network.eval()
         with torch.no_grad():
@@ -326,14 +326,14 @@ class SIMSClassifier(pl.LightningModule):
                 # Some dataloaders will have all_labels, handle this case
                 if len(X) == 2:
                     data, label = X
-                    all_labels.extend(label.numpy())
+                    np.append(all_labels, label, axis=0)
                 else:
                     data = X
 
                 data = data.float()
                 res, _ = self(data)
                 _, top_preds = res.topk(3, axis=1)  # to get indices
-                preds.extend(top_preds.numpy())
+                np.append(preds, top_preds.cpu().numpy(), axis=0)
 
         final = pd.DataFrame(preds)
         final = final.rename(

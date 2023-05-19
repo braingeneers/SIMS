@@ -104,3 +104,7 @@ class MatrixDatasetWithoutLabels(Dataset):
 
     def __len__(self):
         return self.matrix.shape[0]
+    
+    @property
+    def shape(self):
+        return self.matrix.shape

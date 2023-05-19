@@ -335,8 +335,8 @@ class SIMSClassifier(pl.LightningModule):
                 # Some dataloaders will have all_labels, handle this case
                 if len(X) == 2:
                     data, label = X
-                    print("Setting labels at indices", (idx * len(label), (idx + 1) * len(label)))
-                    print("Label shape", label.shape)
+                    # print("Setting labels at indices", (idx * len(label), (idx + 1) * len(label)))
+                    # print("Label shape", label.shape)
                     all_labels[idx * len(label): (idx + 1) * len(label)] = label
                 else:
                     data = X

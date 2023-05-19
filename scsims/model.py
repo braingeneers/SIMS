@@ -344,6 +344,8 @@ class SIMSClassifier(pl.LightningModule):
                 data = data.float()
                 res, _ = self(data)
                 _, top_preds = res.topk(3, axis=1)  # to get indices
+                print(f"Setting preds at indices {(idx * len(data), (idx + 1) * len(data))}")
+                print(f"Preds shape {top_preds.shape}")
                 preds[idx * len(data): (idx + 1) * len(data)] = top_preds.cpu().numpy()
 
         final = pd.DataFrame(preds)
@@ -359,11 +361,6 @@ class SIMSClassifier(pl.LightningModule):
         if hasattr(self, "datamodule") and hasattr(self.datamodule, "label_encoder"):
             encoder = self.datamodule.label_encoder
             final = final.apply(lambda x: encoder.inverse_transform(x))
-
-        # add labels if the label array is not all zeros 
-        if np.any(all_labels):
-            final["labels"] = all_labels
-            final = final.astype({"labels": int})
 
         # if network was in training mode before inference, set it back to that
         if prev_network_state:

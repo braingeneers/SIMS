@@ -355,7 +355,6 @@ class SIMSClassifier(pl.LightningModule):
             },
             axis=1,
         )
-        final = final.astype(int)
 
         if hasattr(self, "datamodule") and hasattr(self.datamodule, "label_encoder"):
             encoder = self.datamodule.label_encoder

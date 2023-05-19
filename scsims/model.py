@@ -248,8 +248,11 @@ class SIMSClassifier(pl.LightningModule):
             return self._explain_matrix
 
         self.network.eval()
-        res_explain = np.zeros((loader.dataset.shape[0], self.network.input_dim))
-        all_labels = np.zeros(loader.dataset.shape[0])
+        res_explain = np.empty((len(loader.dataset), self.network.input_dim))
+        res_explain[:] = np.nan
+
+        all_labels = np.empty(len(loader.dataset))
+        all_labels[:] = np.nan
 
         for batch_nb, data in enumerate(tqdm(loader)):
             # if we are running this on already labeled pairs and not just for inference
@@ -317,8 +320,14 @@ class SIMSClassifier(pl.LightningModule):
             **kwargs
         )
 
-        preds = np.zeros((loader.dataset.shape[0], 3))
-        all_labels = np.zeros(loader.dataset.shape[0])
+        # initialize arrays in memory and fill with nans to start
+        # this makes it easier to see bugs/wrong predictions than filling zeros
+        preds = np.empty((len(loader.dataset), 3))
+        preds[:] = np.nan
+
+        all_labels = np.empty(len(loader.dataset))
+        all_labels[:] = np.nan
+
         prev_network_state = self.network.training
         self.network.eval()
         with torch.no_grad():
@@ -326,6 +335,8 @@ class SIMSClassifier(pl.LightningModule):
                 # Some dataloaders will have all_labels, handle this case
                 if len(X) == 2:
                     data, label = X
+                    print("Setting labels at indices", (idx * len(label), (idx + 1) * len(label)))
+                    print("Label shape", label.shape)
                     all_labels[idx * len(label): (idx + 1) * len(label)] = label
                 else:
                     data = X
@@ -344,13 +355,16 @@ class SIMSClassifier(pl.LightningModule):
             },
             axis=1,
         )
+        final = final.astype(int)
 
         if hasattr(self, "datamodule") and hasattr(self.datamodule, "label_encoder"):
             encoder = self.datamodule.label_encoder
             final = final.apply(lambda x: encoder.inverse_transform(x))
 
-        if all_labels != []:
-            final["actual_label"] = all_labels
+        # add labels if the label array is not all zeros 
+        if np.any(all_labels):
+            final["labels"] = all_labels
+            final = final.astype({"labels": int})
 
         # if network was in training mode before inference, set it back to that
         if prev_network_state:

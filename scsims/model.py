@@ -255,7 +255,7 @@ class SIMSClassifier(pl.LightningModule):
             # if we are running this on already labeled pairs and not just for inference
             if isinstance(data, tuple):
                 X, label = data
-                np.append(all_labels, label, axis=0)
+                all_labels[batch_nb * len(label) : (batch_nb + 1) * len(label)] = label
             else:
                 X = data
 
@@ -268,7 +268,7 @@ class SIMSClassifier(pl.LightningModule):
                 self.reducing_matrix,
             )
 
-            np.append(res_explain, original_feat_explain, axis=0)
+            res_explain[batch_nb * len(X) : (batch_nb + 1) * len(X)] = original_feat_explain
 
             if batch_nb == 0:
                 res_masks = masks
@@ -322,18 +322,18 @@ class SIMSClassifier(pl.LightningModule):
         prev_network_state = self.network.training
         self.network.eval()
         with torch.no_grad():
-            for X in tqdm(loader):
+            for idx, X in enumerate(tqdm(loader)):
                 # Some dataloaders will have all_labels, handle this case
                 if len(X) == 2:
                     data, label = X
-                    np.append(all_labels, label, axis=0)
+                    all_labels[idx * len(label): (idx + 1) * len(label)] = label
                 else:
                     data = X
 
                 data = data.float()
                 res, _ = self(data)
                 _, top_preds = res.topk(3, axis=1)  # to get indices
-                np.append(preds, top_preds.cpu().numpy(), axis=0)
+                preds[idx * len(data): (idx + 1) * len(data)] = top_preds.cpu().numpy()
 
         final = pd.DataFrame(preds)
         final = final.rename(

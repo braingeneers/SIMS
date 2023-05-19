@@ -37,7 +37,10 @@ class SIMS:
     def setup_model(self, *args, **kwargs):
         print('Setting up model ...')
         if 'model_size' in kwargs:
-            assert kwargs['model_size'] in ["big", "medium", "small"], "if specified, model_size must be one of 'big', 'medium', or 'small'"
+            assert kwargs['model_size'] in ["tall", "grande", "venti", "trenta"], "if specified, model_size must be one of 'big', 'medium', or 'small'"
+            if kwargs['model_size'] == "trenta":
+                kwargs['n_a'] = 128
+                kwargs['n_d'] = 128
             if kwargs['model_size'] == "venti":
                 kwargs['n_a'] = 64
                 kwargs['n_d'] = 64

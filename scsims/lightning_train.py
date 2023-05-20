@@ -112,8 +112,9 @@ class DataModule(pl.LightningDataModule):
         self.prepared = False
         self.setuped = False
 
-        self.prepare_data()
-        self.setup()
+        if datafiles is not None:
+            self.prepare_data()
+            self.setup()
 
     @staticmethod
     def get_unique_targets(labelfiles, sep, class_label, datafiles):

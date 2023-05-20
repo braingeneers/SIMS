@@ -258,7 +258,7 @@ class SIMSClassifier(pl.LightningModule):
             # if we are running this on already labeled pairs and not just for inference
             if isinstance(data, tuple):
                 X, label = data
-                all_labels[batch_nb * len(label) : (batch_nb + 1) * len(label)] = label
+                all_labels[batch_nb * batch_size : (batch_nb + 1) * batch_size] = label
             else:
                 X = data
 
@@ -271,7 +271,7 @@ class SIMSClassifier(pl.LightningModule):
                 self.reducing_matrix,
             )
 
-            res_explain[batch_nb * len(X) : (batch_nb + 1) * len(X)] = original_feat_explain
+            res_explain[batch_nb * batch_size : (batch_nb + 1) * batch_size] = original_feat_explain
 
             if batch_nb == 0:
                 res_masks = masks
@@ -287,6 +287,9 @@ class SIMSClassifier(pl.LightningModule):
         if cache:
             self._explain_matrix = res_explain
 
+        if np.all(np.isnan(all_labels)):
+            return res_explain
+        
         return res_explain, all_labels
 
     def _compute_feature_importances(self, dataloader):
@@ -330,23 +333,20 @@ class SIMSClassifier(pl.LightningModule):
 
         prev_network_state = self.network.training
         self.network.eval()
+
         with torch.no_grad():
             for idx, X in enumerate(tqdm(loader)):
                 # Some dataloaders will have all_labels, handle this case
                 if len(X) == 2:
                     data, label = X
-                    # print("Setting labels at indices", (idx * len(label), (idx + 1) * len(label)))
-                    # print("Label shape", label.shape)
-                    all_labels[idx * len(label): (idx + 1) * len(label)] = label
+                    all_labels[idx * batch_size : (idx + 1) * batch_size] = label
                 else:
                     data = X
 
                 data = data.float()
-                res, _ = self(data)
-                _, top_preds = res.topk(3, axis=1)  # to get indices
-                print(f"Setting preds at indices {(idx * len(data), (idx + 1) * len(data))}")
-                print(f"Preds shape {top_preds.shape}")
-                preds[idx * len(data): (idx + 1) * len(data)] = top_preds.cpu().numpy()
+                res = self(data)[0]
+                top_preds = res.topk(3, axis=1)[1]  # to get indices
+                preds[idx * batch_size : (idx + 1) * batch_size] = top_preds.cpu().numpy()
 
         final = pd.DataFrame(preds)
         final = final.rename(
@@ -357,6 +357,10 @@ class SIMSClassifier(pl.LightningModule):
             },
             axis=1,
         )
+        if not np.all(np.isnan(all_labels)):
+            final["label"] = all_labels
+
+        final = final.astype(int)
 
         if hasattr(self, "datamodule") and hasattr(self.datamodule, "label_encoder"):
             encoder = self.datamodule.label_encoder

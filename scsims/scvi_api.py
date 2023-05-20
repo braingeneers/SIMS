@@ -7,6 +7,9 @@ from pytorch_lightning.callbacks import ModelCheckpoint, Timer, EarlyStopping
 
 from scsims.lightning_train import DataModule
 from scsims.model import SIMSClassifier
+import pandas as pd 
+from sklearn.preprocessing import LabelEncoder
+
 
 here = pathlib.Path(__file__).parent.absolute()
 
@@ -92,11 +95,11 @@ class SIMS:
         except Exception as e:
             if "has no attribute" in str(e):
                 print("""
-                    Unable to encoder numeric predictions back to class labels, since the original
-                    labelfile and class_label column were not passed upon initialization. Alternatively, use 
-                    SIMS.decode_predictions([labelfiles]) to convert the numeric labels to string names.
+                    Unable to decode numeric predictions back to class labels, since the original
+                    labelfile and class_label column were not passed upon initialization of the SIMS class. 
+                    Alternatively, call self.decode_predictions(labelfile) to convert the numeric labels to string names.
                 """)
-        self.results = results 
+        self.results = results
 
         print('Finished prediction, returning results and storing in results attribute ...')
         return results
@@ -107,7 +110,17 @@ class SIMS:
 
         return results
 
-    def decode_predictions(predictions, labelfiles, class_labels, datafiles, sep=None):
-        labelencoder, _ = DataModule.get_unique_targets(labelfiles, sep, class_labels, datafiles)
-
-        return labelencoder.inverse_transform(predictions)
+    def decode_predictions(self, labelfile: str, class_label: str):
+        labels = pd.read_csv(labelfile)
+        label_encoder = LabelEncoder()
+        label_encoder.fit(labels[class_label])
+        try: 
+            results = self.results.apply(lambda x: label_encoder.inverse_transform(x))
+        except AttributeError:
+            raise AttributeError(
+                """The results attribute is not configured. This is likely 
+                because you are running the decode_predictions method before running the predict method.
+                Run the predict method first, then run the decode_predictions method."""
+            )
+        return results
+    

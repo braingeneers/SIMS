@@ -108,3 +108,24 @@ class MatrixDatasetWithoutLabels(Dataset):
     @property
     def shape(self):
         return self.matrix.shape
+
+class AnnDatasetForInference(Dataset):
+    def __init__(self, adata) -> None:
+        super().__init__()
+        self.adata = adata
+
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            it = list(range(idx.start or 0, idx.stop or len(self), idx.step or 1))
+            return [self[i] for i in it]
+
+        data = self.adata.X[idx, :]
+        data = torch.from_numpy(data)
+        return data
+
+    def __len__(self):
+        return self.adata.shape[0]
+
+    @property
+    def shape(self):
+        return self.adata.shape

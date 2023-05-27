@@ -39,7 +39,7 @@ class UploadCallback(pl.callbacks.Callback):
 
         if epoch % self.epochs == 0:  # Save every ten epochs
             checkpoint = f"checkpoint-{epoch}-desc-{self.desc}.ckpt"
-            checkpoint_path = os.path.join(self.path, checkpoint)
+            checkpoint_path = os.path.normpath(os.path.join(self.path, checkpoint))
 
             if not self.quiet:
                 print(f"Saving checkpoint on epoch {epoch} to {checkpoint_path}")

@@ -104,7 +104,7 @@ class SIMS:
         print('Finished prediction, returning results and storing in results attribute ...')
         return results
 
-    def explain(self, datafiles: an.AnnData, *args, **kwargs):
+    def explain(self, datafiles: an.AnnData, labelfile=None, class_label=None, *args, **kwargs):
         print('Computing explainability matrix ...')
         results = self._model.explain(datafiles, *args, **kwargs)
 

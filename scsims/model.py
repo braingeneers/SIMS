@@ -117,6 +117,8 @@ class SIMSClassifier(pl.LightningModule):
                 self.network.post_embed_dim,
             )
 
+        self._inference_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
     def forward(self, x):
         return self.network(x)
 
@@ -248,6 +250,8 @@ class SIMSClassifier(pl.LightningModule):
             return self._explain_matrix
 
         self.network.eval()
+        self.network.to(self._inference_device)
+
         res_explain = np.empty((len(loader.dataset), self.network.input_dim))
         res_explain[:] = np.nan
 
@@ -262,6 +266,7 @@ class SIMSClassifier(pl.LightningModule):
             else:
                 X = data
 
+            X = X.to(self._inference_device)
             M_explain, masks = self.network.forward_masks(X)
             for key, value in masks.items():
                 masks[key] = csc_matrix.dot(value.cpu().detach().numpy(), self.reducing_matrix)
@@ -325,6 +330,7 @@ class SIMSClassifier(pl.LightningModule):
 
         # initialize arrays in memory and fill with nans to start
         # this makes it easier to see bugs/wrong predictions than filling zeros
+        
         preds = np.empty((len(loader.dataset), 3))
         preds[:] = np.nan
 
@@ -333,6 +339,7 @@ class SIMSClassifier(pl.LightningModule):
 
         prev_network_state = self.network.training
         self.network.eval()
+        self.network.to(self._inference_device)
 
         with torch.no_grad():
             for idx, X in enumerate(tqdm(loader)):
@@ -342,7 +349,8 @@ class SIMSClassifier(pl.LightningModule):
                     all_labels[idx * batch_size : (idx + 1) * batch_size] = label
                 else:
                     data = X
-
+                
+                X = X.to(self._inference_device)
                 data = data.float()
                 res = self(data)[0]
                 top_preds = res.topk(3, axis=1)[1]  # to get indices

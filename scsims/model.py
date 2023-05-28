@@ -292,9 +292,6 @@ class SIMSClassifier(pl.LightningModule):
         if cache:
             self._explain_matrix = res_explain
 
-        if np.all(np.isnan(all_labels)):
-            return res_explain
-        
         return res_explain, all_labels
 
     def _compute_feature_importances(self, dataloader):

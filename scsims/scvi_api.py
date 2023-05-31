@@ -26,7 +26,7 @@ class SIMS:
     ) -> None:
         print('Setting up data module ...')
         if weights_path is not None:
-            self._model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs)
+            self.model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs)
 
         self.datamodule = DataModule(
             datafiles=[datafiles] if isinstance(datafiles, an.AnnData) else datafiles, 
@@ -53,7 +53,7 @@ class SIMS:
             if kwargs['model_size'] == "tall":
                 kwargs['n_a'] = 8
                 kwargs['n_d'] = 8
-        self._model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
+        self.model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
 
     def setup_trainer(self, early_stopping_patience: int = 20, *args, **kwargs):
         print('Setting up trainer ...')
@@ -77,7 +77,7 @@ class SIMS:
         if not hasattr(self, "_model"):
             self.setup_model(*args, **kwargs)
 
-        self._trainer.fit(self._model, datamodule=self.datamodule)
+        self._trainer.fit(self.model, datamodule=self.datamodule)
 
         print('Finished training')
 
@@ -89,7 +89,7 @@ class SIMS:
                 SIMS class. Reinitialize the SIMS class with the weights_path
                 pointing to the .ckpt file to continue."""
             )
-        results = self._model.predict(inference_data, *args, **kwargs)
+        results = self.model.predict(inference_data, *args, **kwargs)
         try:
             results = results.apply(lambda x: self.label_encoder.inverse_transform(x))
         except Exception as e:
@@ -106,7 +106,7 @@ class SIMS:
 
     def explain(self, datafiles: an.AnnData, labelfile=None, class_label=None, *args, **kwargs):
         print('Computing explainability matrix ...')
-        results = self._model.explain(datafiles, *args, **kwargs)
+        results = self.model.explain(datafiles, *args, **kwargs)
 
         return results
 
@@ -123,4 +123,3 @@ class SIMS:
                 Run the predict method first, then run the decode_predictions method."""
             )
         return results
-    

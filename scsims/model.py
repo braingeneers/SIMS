@@ -243,7 +243,7 @@ class SIMSClassifier(pl.LightningModule):
         cache=False,
         normalize=False,
         **kwargs,
-    ):
+    ) -> tuple[np.ndarray, np.ndarray]:
         loader = self._parse_data(anndata, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
 
         if cache and self._explain_matrix is not None:
@@ -311,10 +311,6 @@ class SIMSClassifier(pl.LightningModule):
             return f
 
     def predict(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
-        """Does inference on data
-
-        :param inference_data: Anndata, torch Dataset, or torch DataLoader object to do inference on
-        """
         loader = self._parse_data(
             inference_data,
             batch_size=batch_size,

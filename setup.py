@@ -59,7 +59,7 @@ setup(
     setup_requires=setup_requirements,
     test_suite="tests",
     tests_require=test_requirements,
-    url="https://github.com/jlehrer1/sims",
+    url="https://github.com/braingeneers/sims",
     version="2.0.2",
     zip_safe=False,
 )

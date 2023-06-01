@@ -240,20 +240,15 @@ class SIMSClassifier(pl.LightningModule):
         num_workers=os.cpu_count(),
         currgenes=None,
         refgenes=None,
-        cache=False,
         normalize=False,
         **kwargs,
     ) -> tuple[np.ndarray, np.ndarray]:
         loader = self._parse_data(anndata, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
 
-        if cache and self._explain_matrix is not None:
-            return self._explain_matrix
-
         self.network.eval()
         self.network.to(self._inference_device)
 
-        res_explain = np.empty((len(loader.dataset), self.network.input_dim))
-        res_explain[:] = np.nan
+        res_explain = []
 
         all_labels = np.empty(len(loader.dataset))
         all_labels[:] = np.nan
@@ -267,16 +262,15 @@ class SIMSClassifier(pl.LightningModule):
                 X = data
 
             X = X.to(self._inference_device)
-            M_explain, masks = self.network.forward_masks(X)
+            M_explain, masks = self.network.forward_masks(data)
             for key, value in masks.items():
-                masks[key] = csc_matrix.dot(value.cpu().detach().numpy(), self.reducing_matrix)
+                masks[key] = csc_matrix.dot(
+                    value.cpu().detach().numpy(), self.reducing_matrix
+                )
 
-            original_feat_explain = csc_matrix.dot(
-                M_explain.cpu().detach().numpy(),
-                self.reducing_matrix,
-            )
-
-            res_explain[batch_nb * batch_size : (batch_nb + 1) * batch_size] = original_feat_explain
+            original_feat_explain = csc_matrix.dot(M_explain.cpu().detach().numpy(),
+                                                   self.reducing_matrix)
+            res_explain.append(original_feat_explain)
 
             if batch_nb == 0:
                 res_masks = masks
@@ -288,9 +282,6 @@ class SIMSClassifier(pl.LightningModule):
 
         if normalize:
             res_explain /= np.sum(res_explain, axis=1)[:, None]
-
-        if cache:
-            self._explain_matrix = res_explain
 
         return res_explain, all_labels
 

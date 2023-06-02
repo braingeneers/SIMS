@@ -74,7 +74,7 @@ class SIMS:
         print('Beginning training')
         if not hasattr(self, "_trainer"):
             self.setup_trainer(*args, **kwargs)
-        if not hasattr(self, "_model"):
+        if not hasattr(self, "model"):
             self.setup_model(*args, **kwargs)
 
         self._trainer.fit(self.model, datamodule=self.datamodule)
@@ -82,7 +82,7 @@ class SIMS:
         print('Finished training')
 
     def predict(self, inference_data: an.AnnData, *args, **kwargs):
-        if not hasattr(self, '_model'):
+        if not hasattr(self, 'model'):
             raise UnconfiguredModelError(
                 """The model attribute is not configured. This is likely 
                 because you are running the predict method after re-initializing the 

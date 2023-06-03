@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable, Dict, Union
+from typing import Any, Callable, Dict, Union
 
 import os
 import anndata as an
@@ -322,23 +322,12 @@ class SIMSClassifier(pl.LightningModule):
         all_labels[:] = np.nan
 
         prev_network_state = self.network.training
-        self.network.eval()
-        self.network.to(self._inference_device)
-
-        with torch.no_grad():
-            for idx, X in enumerate(tqdm(loader)):
-                # Some dataloaders will have all_labels, handle this case
-                if len(X) == 2:
-                    data, label = X
-                    all_labels[idx * batch_size : (idx + 1) * batch_size] = label
-                else:
-                    data = X
-                
-                X = X.to(self._inference_device)
-                data = data.float()
-                res = self(data)[0]
-                top_preds = res.topk(3, axis=1)[1]  # to get indices
-                preds[idx * batch_size : (idx + 1) * batch_size] = top_preds.cpu().numpy()
+        
+        for idx, X in enumerate(tqdm(loader)):
+            # Some dataloaders will have all_labels, handle this case
+            top_preds, label = self.predict_step(X, idx)
+            all_labels[idx * batch_size : (idx + 1) * batch_size] = label
+            preds[idx * batch_size : (idx + 1) * batch_size] = top_preds.cpu().numpy()
 
         final = pd.DataFrame(preds)
         final = final.rename(
@@ -364,6 +353,17 @@ class SIMSClassifier(pl.LightningModule):
 
         return final
 
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+        if len(batch) == 2:
+            data, label = batch
+        else:
+            data = batch
+        
+        data = data.float()
+        res = self(data)[0]
+        top_preds = res.topk(3, axis=1)[1]  # to get indices
+
+        return top_preds.cpu().numpy(), label
 
 def confusion_matrix(model, dataloader, num_classes):
     confusion_matrix = torch.zeros(num_classes, num_classes)

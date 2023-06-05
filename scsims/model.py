@@ -117,8 +117,6 @@ class SIMSClassifier(pl.LightningModule):
                 self.network.post_embed_dim,
             )
 
-        self._inference_device = "cuda:0" if torch.cuda.is_available() else "cpu"
-
     def forward(self, x):
         return self.network(x)
 
@@ -246,8 +244,6 @@ class SIMSClassifier(pl.LightningModule):
         loader = self._parse_data(anndata, batch_size=batch_size, num_workers=num_workers, rows=rows, currgenes=currgenes, refgenes=refgenes, **kwargs)
 
         self.network.eval()
-        self.network.to(self._inference_device)
-
         res_explain = []
 
         all_labels = np.empty(len(loader.dataset))
@@ -261,7 +257,6 @@ class SIMSClassifier(pl.LightningModule):
             else:
                 X = data
 
-            X = X.to(self._inference_device)
             M_explain, masks = self.network.forward_masks(data)
             for key, value in masks.items():
                 masks[key] = csc_matrix.dot(
@@ -314,7 +309,6 @@ class SIMSClassifier(pl.LightningModule):
 
         # initialize arrays in memory and fill with nans to start
         # this makes it easier to see bugs/wrong predictions than filling zeros
-        
         preds = np.empty((len(loader.dataset), 3))
         preds[:] = np.nan
 
@@ -322,7 +316,7 @@ class SIMSClassifier(pl.LightningModule):
         all_labels[:] = np.nan
 
         prev_network_state = self.network.training
-        
+
         for idx, X in enumerate(tqdm(loader)):
             # Some dataloaders will have all_labels, handle this case
             top_preds, label = self.predict_step(X, idx)

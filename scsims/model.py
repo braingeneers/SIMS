@@ -117,6 +117,8 @@ class SIMSClassifier(pl.LightningModule):
                 self.network.post_embed_dim,
             )
 
+        self._inference_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
     def forward(self, x):
         return self.network(x)
 
@@ -136,6 +138,9 @@ class SIMSClassifier(pl.LightningModule):
         on_step=True,
     ):
         for name, metric in self.metrics.items():
+            if y_hat.shape[-1] == 2:
+                y_hat = y_hat[:, 1]
+
             val = metric(y_hat, y)
             self.log(
                 f"{tag}_{name}",
@@ -257,7 +262,7 @@ class SIMSClassifier(pl.LightningModule):
             else:
                 X = data
 
-            M_explain, masks = self.network.forward_masks(data)
+            M_explain, masks = self.network.forward_masks(X)
             for key, value in masks.items():
                 masks[key] = csc_matrix.dot(
                     value.cpu().detach().numpy(), self.reducing_matrix

@@ -356,8 +356,8 @@ class SIMSClassifier(pl.LightningModule):
         if len(batch) == 2:
             data, label = batch
         else:
-            data = batch
-        
+            data, label = batch, None
+
         data = data.float()
         res = self(data)[0]
         top_preds = res.topk(3, axis=1)[1]  # to get indices

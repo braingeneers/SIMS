@@ -326,7 +326,7 @@ class SIMSClassifier(pl.LightningModule):
             # Some dataloaders will have all_labels, handle this case
             top_preds, label = self.predict_step(X, idx)
             all_labels[idx * batch_size : (idx + 1) * batch_size] = label
-            preds[idx * batch_size : (idx + 1) * batch_size] = top_preds.cpu().numpy()
+            preds[idx * batch_size : (idx + 1) * batch_size] = top_preds
 
         final = pd.DataFrame(preds)
         final = final.rename(

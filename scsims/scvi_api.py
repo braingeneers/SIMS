@@ -55,7 +55,7 @@ class SIMS:
                 kwargs['n_d'] = 8
         self.model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
 
-    def setup_trainer(self, early_stopping_patience: int = 20, *args, **kwargs):
+    def setup_trainer(self, early_stopping_patience: int = None, *args, **kwargs):
         print('Setting up trainer ...')
         if 'callbacks' in kwargs:
             # check if any of the list of callbacks is a modelcheckpoint or timer
@@ -64,10 +64,12 @@ class SIMS:
                 callbacks.append(ModelCheckpoint())
             if not any([isinstance(callback, Timer) for callback in callbacks]):
                 callbacks.append(Timer())
-            if not any([isinstance(callback, EarlyStopping) for callback in callbacks]):
+            if not any([isinstance(callback, EarlyStopping) for callback in callbacks]) and early_stopping_patience is not None:
                 callbacks.append(EarlyStopping(monitor='val_loss', patience=early_stopping_patience))
         else:
-            kwargs['callbacks'] = [ModelCheckpoint(), Timer(), EarlyStopping(monitor='val_loss', patience=early_stopping_patience)]
+            kwargs['callbacks'] = [ModelCheckpoint(), Timer()]
+            if early_stopping_patience is not None:
+                kwargs['callbacks'].append(EarlyStopping(monitor='val_loss', patience=early_stopping_patience))
         self._trainer = pl.Trainer(*args, **kwargs)
 
     def train(self, *args, **kwargs):

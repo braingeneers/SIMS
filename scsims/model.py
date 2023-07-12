@@ -320,16 +320,30 @@ class SIMSClassifier(pl.LightningModule):
         all_labels = np.empty(len(loader.dataset))
         all_labels[:] = np.nan
 
+        # save probs 
+        probs = np.empty(len(loader.dataset))
+        probs[:] = np.nan
+
         prev_network_state = self.network.training
 
         for idx, X in enumerate(tqdm(loader)):
             # Some dataloaders will have all_labels, handle this case
-            top_preds, label = self.predict_step(X, idx)
+            top_probs, top_preds, label = self.predict_step(X, idx)
             all_labels[idx * batch_size : (idx + 1) * batch_size] = label
             preds[idx * batch_size : (idx + 1) * batch_size] = top_preds
+            probs[idx * batch_size : (idx + 1) * batch_size] = top_probs
 
         final = pd.DataFrame(preds)
         final = final.rename(
+            {
+                0: "first_pred",
+                1: "second_pred",
+                2: "third_pred",
+            },
+            axis=1,
+        )
+        probs = pd.DataFrame(probs)
+        probs = probs.rename(
             {
                 0: "first_prob",
                 1: "second_prob",
@@ -337,6 +351,8 @@ class SIMSClassifier(pl.LightningModule):
             },
             axis=1,
         )
+
+        final = pd.concat([final, probs], axis=1)
         if not np.all(np.isnan(all_labels)):
             final["label"] = all_labels
 
@@ -360,9 +376,9 @@ class SIMSClassifier(pl.LightningModule):
 
         data = data.float()
         res = self(data)[0]
-        top_preds = res.topk(3, axis=1)[1]  # to get indices
+        probs, top_preds = res.topk(3, axis=1)  # to get indices
 
-        return top_preds.cpu().numpy(), label
+        return probs.cpu().numpy(), top_preds.cpu().numpy(), label
 
 def confusion_matrix(model, dataloader, num_classes):
     confusion_matrix = torch.zeros(num_classes, num_classes)

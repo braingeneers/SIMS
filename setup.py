@@ -6,25 +6,13 @@ import pathlib
 
 from setuptools import find_packages, setup
 
-requirements = [
-    "pandas",
-    "numpy",
-    "tqdm",
-    "boto3",
-    "torch<2.0", # for tabnet
-    "lightning==2.0.2",
-    "scanpy",
-    "anndata",
-    "pytorch_tabnet",
-    "torchmetrics",
-    "scikit-learn",
-    "scipy",
-    "wandb",
-    "urllib3==1.26.15"
-]
+def read_requirements(file_path):
+    with open(file_path, "r") as f:
+        requirements = f.read().splitlines()
+    return requirements
 
+requirements = read_requirements("requirements.txt")
 setup_requirements = requirements.copy()
-
 test_requirements = []
 
 # The directory containing this file

@@ -76,7 +76,6 @@ s3transfer==0.6.1
 scanpy==1.9.3
 scikit-learn==1.2.2
 scipy==1.10.1
--e git+https://github.com/braingeneers/SIMS.git@f8ac16e6723c644958d81327ec6c804912a1ab58#egg=scsims
 seaborn==0.12.2
 sentry-sdk==1.22.2
 session-info==1.0.0

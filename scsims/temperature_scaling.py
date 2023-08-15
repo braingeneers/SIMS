@@ -31,7 +31,7 @@ class ModelWithTemperature(nn.Module):
     # This function probably should live outside of this class, but whatever
     def set_temperature(self, valid_loader):
         """
-        Tune the tempearature of the model (using the validation set).
+        Tune the temperature of the model (using the validation set).
         We're going to set it to optimize NLL.
         valid_loader (DataLoader): validation set loader
         """

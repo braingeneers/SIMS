@@ -217,6 +217,7 @@ class SIMSClassifier(pl.LightningModule):
             refgenes=None,
             **kwargs
         ) -> torch.utils.data.DataLoader:
+
         if isinstance(inference_data, str):
             inference_data = an.read_h5ad(inference_data)
 
@@ -302,6 +303,7 @@ class SIMSClassifier(pl.LightningModule):
             return f
 
     def predict(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+        
         loader = self._parse_data(
             inference_data,
             batch_size=batch_size,
@@ -321,11 +323,13 @@ class SIMSClassifier(pl.LightningModule):
         all_labels[:] = np.nan
 
         # save probs 
-        probs = np.empty(len(loader.dataset))
+        probs = np.empty((len(loader.dataset), 3))
         probs[:] = np.nan
 
         prev_network_state = self.network.training
 
+        # batch size might differ if user passes in a dataloader
+        batch_size = loader.batch_size
         for idx, X in enumerate(tqdm(loader)):
             # Some dataloaders will have all_labels, handle this case
             top_probs, top_preds, label = self.predict_step(X, idx)
@@ -373,12 +377,11 @@ class SIMSClassifier(pl.LightningModule):
             data, label = batch
         else:
             data, label = batch, None
-
         data = data.float()
         res = self(data)[0]
         probs, top_preds = res.topk(3, axis=1)  # to get indices
 
-        return probs.cpu().numpy(), top_preds.cpu().numpy(), label
+        return probs.detach().cpu().numpy(), top_preds.detach().cpu().numpy(), label
 
 def confusion_matrix(model, dataloader, num_classes):
     confusion_matrix = torch.zeros(num_classes, num_classes)

@@ -15,197 +15,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import ConcatDataset, DataLoader, Dataset
 
-class DelimitedDataset(Dataset):
-    def __init__(
-        self,
-        filename: str,
-        labelname: str,
-        class_label: str,
-        indices: Collection[int] = None,
-        skip: int = 3,
-        cast: bool = True,
-        sep: bool = ",",
-        index_col: str = None,
-        columns: List[any] = None,
-        **kwargs,  # To handle extraneous inputs
-    ):
-        """
-        Initialization method for DelimitedDataset.
-
-        The filename contains a delimited text file where ROWS are cells and the COLUMNS are the genes measured. The labelname is a delimited text file
-        containing the class_label column, and optionally an index_col.
-
-        Since dropping rows we don't want to train on is nontrivial in the case of the csv, since the csv would have to be read into memory and modified (often this is not computationaly feasible),
-        we instead just drop the rows in the labelname file. Then the index_col column specifies the actual row numbers of the samples we want. Equivalently, the index_col is the numeric equivalent to
-        the labelname index after dropping the unwanted rows.
-
-        For this reason, index_col must be purely numeric, as the i-th entry of labelfile.loc[:, index_col] contains the actual line number of the i-th sample in the data file.
-
-        :param filename: Path to csv data file, where rows are samples and columns are features
-        :type filename: str
-        :param labelname: Path to label file, where column '# labels' defines classification labels
-        :type labelname: str
-        :param class_label: Label to train on, must be in labelname file
-        :type class_label: str
-        :param indices: List of indices to use in dataset. If None, all indices given in labelname are used., defaults to None
-        :type indices: Iterable[int], optional
-        :param skip: number of lines to skip in datafile csv, since header lines are often unneeded, defaults to 3
-        :type skip: int, optional
-        :param cast: cast sample to float32, defaults to True
-        :type cast: bool, optional
-        :param index_col: column in labelfile that contains numerical indices of datafiles, defaults to 'cell'
-        :type index_col: str, optional
-        :param sep: separator for labelfile and datafile, defaults to ','
-        :type sep: str, optional
-        """
-
-        self.filename = filename
-        self.labelname = labelname  # alias
-        self.class_label = class_label
-        self.index_col = index_col
-        self.skip = skip
-        self.cast = cast
-        self.indices = indices
-        self.sep = sep
-        self._cols = columns
-
-        if indices is None:
-            self._labeldf = pd.read_csv(labelname, sep=self.sep)
-        else:
-            self._labeldf = pd.read_csv(labelname, sep=self.sep).loc[indices, :].reset_index(drop=True)
-
-    def __getitem__(self, idx: int):
-        """Get sample at index
-
-        :param idx: Numerical index between 0, len(self) -1
-        :type idx: int
-        :raises ValueError: Errors in the case of unbounded slicing, which is normally supported in this method
-        :return: Returns a data, label sample
-        :rtype: Tuple[torch.Tensor, Any]
-        """
-        # Handle slicing
-        if isinstance(idx, slice):
-            if idx.start is None or idx.stop is None:
-                raise ValueError(
-                    f"Error: Unlike other iterables, {self.__class__.__name__} does not support unbounded slicing since samples are being read as needed from disk, which may result in memory errors."
-                )
-
-            step = 1 if idx.step is None else idx.step
-            idxs = range(idx.start, idx.stop, step)
-            return [self[i] for i in idxs]
-
-        # The actual line in the datafile to get, corresponding to the number in the self.index_col values, otherwise the line at index "idx"
-        data_index = self._labeldf.loc[idx, self.index_col] if self.index_col is not None else idx
-
-        # get gene expression for current cell from csv file
-        # We skip some lines because we're reading directly from
-        line = linecache.getline(self.filename, data_index + self.skip)
-
-        if self.cast:
-            data = torch.from_numpy(np.array(line.split(self.sep), dtype=np.float32)).float()
-        else:
-            data = np.array(line.split(self.sep))
-
-        label = self._labeldf.loc[idx, self.class_label]
-
-        return data, label
-
-    def __len__(self):
-        return len(self._labeldf)  # number of total samples
-
-    def columns(self):  # Just an alias...
-        return self.features
-
-    def features(self):
-        if self._cols is not None:
-            return self._cols
-        else:
-            data = linecache.getline(self.filename, self.skip - 1)
-            data = [x.split("|")[0].upper().strip() for x in data.split(self.sep)]
-            return data
-
-    @cached_property
-    def labels(self):
-        return self._labeldf.loc[:, self.class_label].unique()
-
-    @property
-    def shape(self):
-        return (self.__len__(), len(self.features))
-
-    def class_weights(self):
-        labels = self._labeldf.loc[:, self.class_label].values
-
-        return compute_class_weight(class_weight="balanced", classes=np.unique(labels), y=labels)
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(filename={self.filename}, labelname={self.labelname})"
-
-    def __str__(self) -> str:
-        return (
-            f"{self.__class__.__name__}"
-            f"(filename={self.filename}, "
-            f"labelname={self.labelname}, "
-            f"skip={self.skip}, "
-            f"cast={self.cast}, "
-            f"indices={self.indices})"
-        )
-
-
-class AnnDatasetFile(Dataset):
-    def __init__(
-        self,
-        matrix: np.ndarray,
-        labelfile: str,
-        class_label: str,
-        index_col=None,
-        subset=None,
-        sep=",",
-        columns: List[any] = None,
-        *args,
-        **kwargs,
-    ) -> None:
-        super().__init__()
-
-        # If labelfile is passed, then we need an associated column to pull the class_label from
-        if labelfile is not None and class_label is None:
-            raise ValueError("If labelfile is passed, column to corresponding class must be passed in class_label.")
-
-        if columns is None:
-            warnings.warn(
-                f"{self.__class__.__name__} initialized without columns. This will error if training with multiple Datasets with potentially different columns."
-            )
-
-        self.data = matrix
-        self.labelfile = labelfile
-        self.class_label = class_label
-        self.index_col = index_col
-        self.sep = sep
-        self.columns = columns
-
-        if subset is not None:
-            self.labels = pd.read_csv(labelfile, sep=self.sep, index_col=index_col).loc[subset, class_label].values
-        else:
-            self.labels = pd.read_csv(labelfile, sep=self.sep, index_col=index_col).loc[:, class_label].values
-
-    def __getitem__(self, idx):
-        if isinstance(idx, slice):
-            it = list(range(idx.start or 0, idx.stop or len(self), idx.step or 1))
-            return [self[i] for i in it]
-
-        data = self.data[idx]
-
-        # If matrix is sparse, then densify it for training
-        if issparse(data):
-            data = data.todense()
-
-        return (torch.from_numpy(data), self.labels[idx])
-
-    def __len__(self):
-        return len(self.data)
-
-    @property
-    def shape(self):
-        return self.data.shape
 
 class AnnDatasetMatrix(Dataset):
     def __init__(
@@ -426,7 +235,6 @@ def _transform_sample(data: torch.Tensor, normalize: bool, transpose: bool) -> t
 
     return data
 
-
 def clean_sample(
     sample: torch.Tensor,
     refgenes: List[str],
@@ -446,7 +254,7 @@ def clean_sample(
     """
 
     indices = np.intersect1d(currgenes, refgenes, return_indices=True)[1]
-
+    
     if sample.ndim == 2:
         sample = sample[:, indices]
     else:

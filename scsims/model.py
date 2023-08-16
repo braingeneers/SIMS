@@ -332,13 +332,13 @@ class SIMSClassifier(pl.LightningModule):
         batch_size = loader.batch_size
         for idx, X in enumerate(tqdm(loader)):
             # Some dataloaders will have all_labels, handle this case
-            top_probs, top_preds, label = self.predict_step(X, idx)
+            top_probs, top_preds, label = self.predict_step(batch=X, batch_idx=idx)
             all_labels[idx * batch_size : (idx + 1) * batch_size] = label
             preds[idx * batch_size : (idx + 1) * batch_size] = top_preds
             probs[idx * batch_size : (idx + 1) * batch_size] = top_probs
 
-        final = pd.DataFrame(preds)
-        final = final.rename(
+        preds = pd.DataFrame(preds)
+        preds = preds.rename(
             {
                 0: "first_pred",
                 1: "second_pred",
@@ -356,11 +356,10 @@ class SIMSClassifier(pl.LightningModule):
             axis=1,
         )
 
-        final = pd.concat([final, probs], axis=1)
+        final = pd.concat([preds, probs], axis=1)
+
         if not np.all(np.isnan(all_labels)):
             final["label"] = all_labels
-
-        final = final.astype(int)
 
         if hasattr(self, "datamodule") and hasattr(self.datamodule, "label_encoder"):
             encoder = self.datamodule.label_encoder

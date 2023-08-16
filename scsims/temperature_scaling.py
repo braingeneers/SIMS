@@ -2,7 +2,6 @@ import torch
 from torch import nn, optim
 from torch.nn import functional as F
 
-
 class ModelWithTemperature(nn.Module):
     """
     A thin decorator, which wraps a model with temperature scaling
@@ -25,8 +24,8 @@ class ModelWithTemperature(nn.Module):
         Perform temperature scaling on logits
         """
         # Expand temperature to match the size of logits
-        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
-        return logits / temperature
+        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))  # (Batch, Classes)
+        return logits / temperature  # (Batch, Classes)
 
     # This function probably should live outside of this class, but whatever
     def set_temperature(self, valid_loader):
@@ -44,10 +43,10 @@ class ModelWithTemperature(nn.Module):
         with torch.no_grad():
             for input, label in valid_loader:
                 input = input
-                logits = self.model(input)
+                logits = self.model(input)[0]
                 logits_list.append(logits)
                 labels_list.append(label)
-            logits = torch.cat(logits_list)
+            logits = torch.cat(logits_list) # (num_samples, batch_size, num_classes)
             labels = torch.cat(labels_list)
 
         # Calculate NLL and ECE before temperature scaling
@@ -64,8 +63,7 @@ class ModelWithTemperature(nn.Module):
             loss.backward()
             return loss
         optimizer.step(eval)
-
-        # Calculate NLL and ECE after temperature scaling
+        
         after_temperature_nll = nll_criterion(self.temperature_scale(logits), labels).item()
         after_temperature_ece = ece_criterion(self.temperature_scale(logits), labels).item()
         print('Optimal temperature: %.3f' % self.temperature.item())

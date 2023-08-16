@@ -27,5 +27,6 @@ RUN pip install matplotlib \
     plotly \
     scipy
 
+ENV cache=0 #Change number rndly to change sims version
 RUN pip3 install --use-pep517 --no-cache git+https://github.com/braingeneers/SIMS.git
 COPY . .

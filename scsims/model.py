@@ -122,8 +122,8 @@ class SIMSClassifier(pl.LightningModule):
 
     def forward(self, x):
         logits, M_loss = self.network(x)
-        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))  # (Batch, Classes)
-        return logits / temperature, M_loss
+        # temp scaling will be 1 so logits wont change until model is calibrated
+        return self.temperature_scale(logits), M_loss
 
     def _compute_loss(self, y, y_hat):
         # If user doesn't specify, just set to cross_entropy
@@ -384,6 +384,14 @@ class SIMSClassifier(pl.LightningModule):
         probs, top_preds = res.topk(3, axis=1)  # to get indices
 
         return probs.detach().cpu().numpy(), top_preds.detach().cpu().numpy(), label
+ 
+    def temperature_scale(self, logits):
+        """
+        Perform temperature scaling on logits
+        """
+        # Expand temperature to match the size of logits
+        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))  # (Batch, Classes)
+        return logits / temperature  # (Batch, Classes)
 
     def set_temperature(self):
         """

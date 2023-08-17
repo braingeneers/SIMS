@@ -163,6 +163,8 @@ class SIMSClassifier(pl.LightningModule):
             value = metric(results["probs"], batch[1])
             self.log(f"train_{name}", value=value)
 
+        return results["loss"]
+
     def on_train_epoch_end(self) -> None:
         for name, metric in self.metrics["train"].items():
             value = metric.compute()
@@ -175,6 +177,8 @@ class SIMSClassifier(pl.LightningModule):
         for name, metric in self.metrics["val"].items():
             value = metric(results["probs"], batch[1])
             self.log(f"val_{name}", value=value)
+
+        return results["loss"]
 
     def on_validation_epoch_end(self) -> None:
         for name, metric in self.metrics["val"].items():

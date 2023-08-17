@@ -126,5 +126,5 @@ class SIMS:
             )
         return results
 
-    def set_temperature(self):
-        self.model = self.model.set_temperature()
+    def set_temperature(self, dataloader):
+        self.model = self.model.set_temperature(dataloader)

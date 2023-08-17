@@ -405,8 +405,9 @@ class SIMSClassifier(pl.LightningModule):
         # First: collect all the logits and labels for the validation set
         logits_list = []
         labels_list = []
+        print("Setting temperature ...")
         with torch.no_grad():
-            for data, label in dataloader:
+            for data, label in tqdm(dataloader):
                 logits = self(data)[0]
                 logits_list.append(logits)
                 labels_list.append(label)

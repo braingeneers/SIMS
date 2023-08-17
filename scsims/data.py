@@ -62,7 +62,7 @@ class CollateLoader(DataLoader):
         refgenes: List[str] = None,
         currgenes: List[str] = None,
         transpose: bool = False,
-        normalize: bool = False,
+        normalize: bool = True,
         *args,
         **kwargs,
     ) -> None:

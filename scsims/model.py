@@ -333,7 +333,7 @@ class SIMSClassifier(pl.LightningModule):
             preds[idx * batch_size : (idx + 1) * batch_size] = top_preds
             probs[idx * batch_size : (idx + 1) * batch_size] = top_probs
 
-        preds = pd.DataFrame(preds)
+        preds = pd.DataFrame(preds).astype(int)
         preds = preds.rename(
             {
                 0: "first_pred",

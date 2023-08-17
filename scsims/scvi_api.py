@@ -125,3 +125,6 @@ class SIMS:
                 Run the predict method first, then run the decode_predictions method."""
             )
         return results
+
+    def set_temperature(self):
+        self.model = self.model.set_temperature()

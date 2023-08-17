@@ -393,11 +393,11 @@ class SIMSClassifier(pl.LightningModule):
         temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))  # (Batch, Classes)
         return logits / temperature  # (Batch, Classes)
 
-    def set_temperature(self):
+    def set_temperature(self, dataloader):
         """
         Tune the temperature of the model (using the validation set).
         We're going to set it to optimize NLL.
-        valid_loader (DataLoader): validation set loader
+        dataloader (DataLoader): validation set loader
         """
         nll_criterion = torch.nn.CrossEntropyLoss()
         ece_criterion = _ECELoss()
@@ -406,11 +406,10 @@ class SIMSClassifier(pl.LightningModule):
         logits_list = []
         labels_list = []
         with torch.no_grad():
-            for dataloader in self.trainer.val_dataloaders:
-                for data, label in dataloader:
-                    logits = self(data)[0]
-                    logits_list.append(logits)
-                    labels_list.append(label)
+            for data, label in dataloader:
+                logits = self(data)[0]
+                logits_list.append(logits)
+                labels_list.append(label)
             logits = torch.cat(logits_list) # (num_samples * batch_size, num_classes)
             labels = torch.cat(labels_list)
 

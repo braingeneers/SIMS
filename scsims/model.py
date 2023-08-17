@@ -18,7 +18,8 @@ from scsims.data import CollateLoader
 from scsims.inference import MatrixDatasetWithoutLabels
 from scsims.temperature_scaling import _ECELoss
 from torchmetrics import Accuracy, F1Score, Precision, Recall, Specificity
-from copy import deepcopy
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class SIMSClassifier(pl.LightningModule):
     def __init__(
@@ -66,8 +67,8 @@ class SIMSClassifier(pl.LightningModule):
             self._from_pretrained(**pretrained.get_params())
 
         self.metrics = {
-            "train": aggregate_metrics(num_classes=self.output_dim),
-            "val": aggregate_metrics(num_classes=self.output_dim),
+            "train": {x: y.to(device) for x, y in aggregate_metrics(num_classes=self.output_dim).items()},
+            "val": {x: y.to(device) for x, y in aggregate_metrics(num_classes=self.output_dim).items()},
         }
 
         self.optim_params = (

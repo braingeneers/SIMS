@@ -11,14 +11,14 @@ import torch.nn.functional as F
 from pytorch_tabnet.tab_network import TabNet
 from pytorch_tabnet.utils import create_explain_matrix
 from scipy.sparse import csc_matrix
-from torchmetrics.functional import (accuracy, auroc, f1_score, precision,
-                                     recall, specificity)
 from torchmetrics.functional.classification.stat_scores import _stat_scores_update
 from tqdm import tqdm
 
 from scsims.data import CollateLoader
 from scsims.inference import MatrixDatasetWithoutLabels
 from scsims.temperature_scaling import _ECELoss
+from torchmetrics import Accuracy, F1Score, Precision, Recall, Specificity
+from copy import deepcopy
 
 class SIMSClassifier(pl.LightningModule):
     def __init__(
@@ -40,7 +40,6 @@ class SIMSClassifier(pl.LightningModule):
         mask_type="sparsemax",
         lambda_sparse=1e-3,
         optim_params: Dict[str, float] = None,
-        metrics: Dict[str, Callable] = None,
         scheduler_params: Dict[str, float] = None,
         weights: torch.Tensor = None,
         loss: Callable = None,  # will default to cross_entropy
@@ -56,19 +55,20 @@ class SIMSClassifier(pl.LightningModule):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.lambda_sparse = lambda_sparse
-
         self.optim_params = optim_params
-
         self.weights = weights
         self.loss = loss
+
+        if self.loss is None:
+            self.loss = F.cross_entropy
 
         if pretrained is not None:
             self._from_pretrained(**pretrained.get_params())
 
-        if metrics is None:
-            self.metrics = aggregate_metrics(num_classes=self.output_dim)
-        else:
-            self.metrics = metrics
+        self.metrics = {
+            "train": aggregate_metrics(num_classes=self.output_dim),
+            "val": aggregate_metrics(num_classes=self.output_dim),
+        }
 
         self.optim_params = (
             optim_params
@@ -125,47 +125,22 @@ class SIMSClassifier(pl.LightningModule):
         # temp scaling will be 1 so logits wont change until model is calibrated
         return self.temperature_scale(logits), M_loss
 
-    def _compute_loss(self, y, y_hat):
-        # If user doesn't specify, just set to cross_entropy
-        if self.loss is None:
-            self.loss = F.cross_entropy
-
-        return self.loss(y, y_hat, weight=self.weights)
-
-    def _compute_metrics(
-        self,
-        y_hat: torch.Tensor,
-        y: torch.Tensor,
-        tag: str,
-        on_epoch=True,
-        on_step=True,
-    ):
-        for name, metric in self.metrics.items():
-            if y_hat.shape[-1] == 2:
-                y_hat = y_hat[:, 1]
-
-            val = metric(y_hat, y)
-            self.log(
-                f"{tag}_{name}",
-                val,
-                on_epoch=on_epoch,
-                on_step=on_step,
-                logger=True,
-            )
-
     def _step(self, batch, tag):
         x, y = batch
-        y_hat, M_loss = self.network(x)
+        logits, M_loss = self.network(x)
 
-        loss = self._compute_loss(y_hat, y)
-        # Add the overall sparsity loss
+        loss = self.loss(logits, y, weight=self.weights)
         loss = loss - self.lambda_sparse * M_loss
 
-        self.log(f"{tag}_loss", loss, logger=True, on_epoch=True, on_step=True)
-        self._compute_metrics(y_hat, y, tag)
+        # take softmax for metrics
+        probs = logits.softmax(dim=-1)
+
+        # if binary, probs will be (batch, 2), so take second column
+        if probs.shape[-1] == 2:
+            probs = probs[:, 1]
 
         tp, fp, _, fn = _stat_scores_update(
-            preds=y_hat,
+            preds=logits,
             target=y,
             num_classes=self.output_dim,
             reduce="macro",
@@ -176,18 +151,36 @@ class SIMSClassifier(pl.LightningModule):
             "tp": tp,
             "fp": fp,
             "fn": fn,
+            "probs": probs,
         }
 
     # Calculations on step
     def training_step(self, batch, batch_idx):
-        return self._step(batch, "train")
+        results = self._step(batch, "train")
+        self.log(f"train_loss", results["loss"], on_epoch=True, on_step=True)
+        for name, metric in self.metrics["train"].items():
+            value = metric(results["probs"], batch[1])
+            self.log(f"train_{name}", value=value)
+
+    def on_train_epoch_end(self) -> None:
+        for name, metric in self.metrics["train"].items():
+            value = metric.compute()
+            self.log(f"train_{name}", value=value)
+            metric.reset() # inplace
 
     def validation_step(self, batch, batch_idx):
-        return self._step(batch, "val")
+        results = self._step(batch, "val")
+        self.log(f"val_loss", results["loss"], on_epoch=True, on_step=True)
+        for name, metric in self.metrics["val"].items():
+            value = metric(results["probs"], batch[1])
+            self.log(f"val_{name}", value=value)
 
-    def test_step(self, batch, batch_idx):
-        return self._step(batch, "test")
-
+    def on_validation_epoch_end(self) -> None:
+        for name, metric in self.metrics["val"].items():
+            value = metric.compute()
+            self.log(f"val_{name}", value=value)
+            metric.reset()
+    
     def configure_optimizers(self):
         if "optimizer" in self.optim_params:
             optimizer = self.optim_params.pop("optimizer")
@@ -382,6 +375,7 @@ class SIMSClassifier(pl.LightningModule):
         data = data.float()
         res = self(data)[0]
         probs, top_preds = res.topk(3, axis=1)  # to get indices
+        probs = probs.softmax(dim=-1)
 
         return probs.detach().cpu().numpy(), top_preds.detach().cpu().numpy(), label
  
@@ -462,19 +456,15 @@ def median_f1(tps, fps, fns):
 def aggregate_metrics(num_classes) -> Dict[str, Callable]:
     task = "binary" if num_classes == 2 else "multiclass"
     num_classes = None if num_classes == 2 else num_classes
+
     metrics = {
-        # Accuracies
-        "micro_accuracy": partial(accuracy, task=task, num_classes=num_classes, average="micro"),
-        "macro_accuracy": partial(accuracy, task=task, num_classes=num_classes, average="macro"),
-        "weighted_accuracy": partial(accuracy, task=task, num_classes=num_classes, average="weighted"),
-        # Precision, recall and f1s, all macro weighted
-        "precision": partial(precision, task=task, num_classes=num_classes, average="macro"),
-        "recall": partial(recall, task=task, num_classes=num_classes, average="macro"),
-        "f1": partial(f1_score, task=task, num_classes=num_classes, average="macro"),
-        # Random stuff I might want
-        "specificity": partial(specificity, task=task, num_classes=num_classes, average="macro"),
-        # 'confusion_matrix': partial(confusion_matrix, num_classes=num_classes),
-        "auroc": partial(auroc, task=task, num_classes=num_classes, average="macro"),
+        "micro_accuracy": Accuracy(task=task, num_classes=num_classes, average="micro"),
+        "macro_accuracy": Accuracy(task=task, num_classes=num_classes, average="macro"),
+        "weighted_accuracy": Accuracy(task=task, num_classes=num_classes, average="weighted"),
+        "precision": Precision(task=task, num_classes=num_classes, average="macro"),
+        "recall": Recall(task=task, num_classes=num_classes, average="macro"),
+        "f1": F1Score(task=task, num_classes=num_classes, average="macro"),
+        "specificity": Specificity(task=task, num_classes=num_classes, average="macro"),
     }
 
     return metrics

@@ -19,7 +19,6 @@ class UnconfiguredModelError(Exception):
 class SIMS:
     def __init__(
         self,
-        datafiles: Union[list[str], list[an.AnnData]] = None,
         weights_path: str = None,
         *args,
         **kwargs,
@@ -29,7 +28,6 @@ class SIMS:
             self.model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs)
 
         self.datamodule = DataModule(
-            datafiles=[datafiles] if isinstance(datafiles, an.AnnData) else datafiles, 
             *args,
             **kwargs,
         )

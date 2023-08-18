@@ -15,6 +15,30 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import ConcatDataset, DataLoader, Dataset
 
+class TransformSequence:
+    def __init__(self, *transforms):
+        self.transforms = transforms
+
+    def __call__(self, x):
+        for transform in self.transforms:
+            x = transform(x)
+        return x
+
+class RandomNoise:
+    def __init__(self, mean=0, std=0.1):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, x):
+        return x + torch.randn_like(x) * self.std + self.mean
+
+class RandomDropout:
+    def __init__(self, p=0.2):
+        self.p = p
+
+    def __call__(self, x):
+        return torch.nn.functional.dropout(x, p=self.p, training=True)
+
 
 class AnnDatasetMatrix(Dataset):
     def __init__(
@@ -22,6 +46,7 @@ class AnnDatasetMatrix(Dataset):
         matrix: np.ndarray,
         labels: List[any],
         split: Collection[int] = None,
+        transform: TransformSequence = None, 
         *args,
         **kwargs,
     ) -> None:
@@ -29,6 +54,7 @@ class AnnDatasetMatrix(Dataset):
         self.data = matrix
         self.labels = labels
         self.split = split
+        self.transform = transform
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
@@ -42,6 +68,9 @@ class AnnDatasetMatrix(Dataset):
             data = data.todense()
             # Need to get first row of 1xp matrix, weirdly this is how to do it :shrug:
             data = np.squeeze(np.asarray(data))
+
+        if self.transform is not None:
+            data = self.transform(data)
 
         return (torch.from_numpy(data), self.labels[idx])
 

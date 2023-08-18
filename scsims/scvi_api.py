@@ -114,8 +114,11 @@ class SIMS:
         labels = pd.read_csv(labelfile)
         label_encoder = LabelEncoder()
         label_encoder.fit(labels[class_label])
-        try: 
-            results = self.results.apply(lambda x: label_encoder.inverse_transform(x))
+        results = self.results
+        try:
+            pred_columns = [col for col in results.columns if 'pred' in col]
+            results[pred_columns] = results[pred_columns].apply(lambda x: label_encoder.inverse_transform(x))
+            #results = self.results.apply(lambda x: label_encoder.inverse_transform(x))
         except AttributeError:
             raise AttributeError(
                 """The results attribute is not configured. This is likely 

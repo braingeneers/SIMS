@@ -43,6 +43,8 @@ class DataModule(pl.LightningDataModule):
         if data is not None:
             self.prepare_data()
             self.setup()
+        else:
+            print("Warning: no data provided. No dataloaders will be created")
 
     def prepare_data(self):
         unique_targets = self.data.obs.loc[:, self.class_label].unique()

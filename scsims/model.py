@@ -46,11 +46,16 @@ class SIMSClassifier(pl.LightningModule):
         loss: Callable = None,  # will default to cross_entropy
         pretrained: bool = None,
         no_explain: bool = False,
+        genes: list[str] = None,
+        cells: list[str] = None,
         *args,
         **kwargs,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
+
+        self.genes = genes
+        self.cells = cells
 
         # Stuff needed for training
         self.input_dim = input_dim

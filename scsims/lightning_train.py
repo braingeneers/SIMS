@@ -116,3 +116,11 @@ class DataModule(pl.LightningDataModule):
     @cached_property
     def output_dim(self):
         return self.num_labels
+
+    @cached_property
+    def genes(self):
+        return self.data.var.index.tolist()
+    
+    @cached_property
+    def cells(self):
+        return self.data.obs.index.tolist()

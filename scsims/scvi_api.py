@@ -27,10 +27,7 @@ class SIMS:
         if weights_path is not None:
             self.model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs)
 
-        self.datamodule = DataModule(
-            *args,
-            **kwargs,
-        )
+        self.datamodule = DataModule(*args, **kwargs)
 
         for att, value in self.datamodule.__dict__.items():
             setattr(self, att, value)
@@ -51,7 +48,14 @@ class SIMS:
             if kwargs['model_size'] == "tall":
                 kwargs['n_a'] = 8
                 kwargs['n_d'] = 8
-        self.model = SIMSClassifier(self.datamodule.input_dim, self.datamodule.output_dim, *args, **kwargs)
+        self.model = SIMSClassifier(
+            input_dim=self.datamodule.input_dim, 
+            output_dim=self.datamodule.output_dim, 
+            genes=self.datamodule.genes,
+            cells=self.datamodule.cells,
+            *args, 
+            **kwargs
+        )
 
     def setup_trainer(self, early_stopping_patience: int = None, *args, **kwargs):
         print('Setting up trainer ...')

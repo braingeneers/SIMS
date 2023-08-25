@@ -219,8 +219,6 @@ class SIMSClassifier(pl.LightningModule):
             batch_size=64,
             num_workers=os.cpu_count(),
             rows=None,
-            currgenes=None,
-            refgenes=None,
             **kwargs
         ) -> torch.utils.data.DataLoader:
 
@@ -235,8 +233,6 @@ class SIMSClassifier(pl.LightningModule):
                 dataset=inference_data,
                 batch_size=batch_size,
                 num_workers=num_workers,
-                currgenes=currgenes,
-                refgenes=refgenes,
                 **kwargs,
             )
 
@@ -397,7 +393,7 @@ class SIMSClassifier(pl.LightningModule):
         temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))  # (Batch, Classes)
         return logits / temperature  # (Batch, Classes)
 
-    def set_temperature(self, dataloader):
+    def set_temperature(self, dataloader, max_iter=50, lr=0.01):
         """
         Tune the temperature of the model (using the validation set).
         We're going to set it to optimize NLL.
@@ -424,7 +420,7 @@ class SIMSClassifier(pl.LightningModule):
         print('Before temperature - NLL: %.3f, ECE: %.3f' % (before_temperature_nll, before_temperature_ece))
 
         # Next: optimize the temperature w.r.t. NLL
-        optimizer = torch.optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
+        optimizer = torch.optim.LBFGS([self.temperature], lr=lr, max_iter=max_iter)
 
         def eval():
             optimizer.zero_grad()

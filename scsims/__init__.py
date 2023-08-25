@@ -13,5 +13,4 @@ __all__ = [
     "MatrixDatasetWithLabelsFile",
     "MatrixDatasetWithoutLabels",
     "UploadCallback",
-    "TemperatureScaling",
 ]

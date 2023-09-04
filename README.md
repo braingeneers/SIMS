@@ -23,14 +23,14 @@ from scsims import SIMS
 from pytorch_lightning.loggers import WandbLogger
 logger = WandbLogger(offline=True)
 
-sims = SIMS(datafiles=['my/data/file.h5ad'], class_label='class_label')
+sims = SIMS(data=['my/data/file.h5ad'], class_label='class_label')
 sims.setup_trainer(accelerator="gpu", devices=1, logger=logger)
 sims.train()
 ```
 
 This will automatically load in your `.h5ad` file, where the `class_label` is assumed to be a valid column in the `.obs` attribute. Alternatively, if your labels are stored in a separate csv, you may also initialize the class like
 ```python
-sims = SIMS(datafiles=['my/data/file.h5ad'], labelfiles=['my/label/file.csv'], class_label='class_label')
+sims = SIMS(data=['my/data/file.h5ad'], labelfiles=['my/label/file.csv'], class_label='class_label')
 sims.train()
 ```
 
@@ -58,7 +58,7 @@ from scsims import SIMS
 
 wandb_logger = WandbLogger(project=f"My Project", name=f"SIMS Model Training") # set up the logger to log data to Weights and Biases
 
-sims = SIMS(adata=adata, class_label='class_label')
+sims = SIMS(data=adata, class_label='class_label')
 sims.setup_model(n_a=64, n_d=64, weights=sims.weights)  # weighting loss inversely proportional by label freq, helps learn rare cell types (recommended)
 sims.setup_trainer(
     logger=wandb_logger,

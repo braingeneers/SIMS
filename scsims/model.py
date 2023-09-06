@@ -15,7 +15,7 @@ from torchmetrics.functional.classification.stat_scores import _stat_scores_upda
 from tqdm import tqdm
 
 from scsims.data import CollateLoader
-from scsims.inference import MatrixDatasetWithoutLabels
+from scsims.inference import DatasetForInference
 from scsims.temperature_scaling import _ECELoss
 from torchmetrics import Accuracy, F1Score, Precision, Recall, Specificity
 
@@ -48,6 +48,7 @@ class SIMSClassifier(pl.LightningModule):
         no_explain: bool = False,
         genes: list[str] = None,
         cells: list[str] = None,
+        label_encoder: Callable = None,
         *args,
         **kwargs,
     ) -> None:
@@ -56,6 +57,7 @@ class SIMSClassifier(pl.LightningModule):
 
         self.genes = genes
         self.cells = cells
+        self.label_encoder = label_encoder
 
         # Stuff needed for training
         self.input_dim = input_dim
@@ -226,7 +228,7 @@ class SIMSClassifier(pl.LightningModule):
             inference_data = an.read_h5ad(inference_data)
 
         if isinstance(inference_data, an.AnnData):
-            inference_data = MatrixDatasetWithoutLabels(inference_data.X[rows, :] if rows is not None else inference_data.X)
+            inference_data = DatasetForInference(inference_data.X[rows, :] if rows is not None else inference_data.X)
 
         if not isinstance(inference_data, torch.utils.data.DataLoader):
             inference_data = CollateLoader(

@@ -25,7 +25,7 @@ class SIMS:
     ) -> None:
         print('Setting up data module ...')
         if weights_path is not None:
-            self.model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs)
+            self.model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs, strict=False)
 
         self.datamodule = DataModule(*args, **kwargs)
 
@@ -48,11 +48,13 @@ class SIMS:
             if kwargs['model_size'] == "tall":
                 kwargs['n_a'] = 8
                 kwargs['n_d'] = 8
+
         self.model = SIMSClassifier(
             input_dim=self.datamodule.input_dim, 
             output_dim=self.datamodule.output_dim, 
             genes=self.datamodule.genes,
             cells=self.datamodule.cells,
+            label_encoder=self.datamodule.label_encoder,
             *args, 
             **kwargs
         )

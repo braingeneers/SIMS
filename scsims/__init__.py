@@ -1,5 +1,5 @@
 from .data import *
-from .inference import MatrixDatasetWithLabelsFile, MatrixDatasetWithoutLabels
+from .inference import DatasetForInference
 from .lightning_train import *
 from .model import *
 from .networking import UploadCallback
@@ -10,7 +10,6 @@ __all__ = [
     "SIMS",
     "SIMSClassifier",
     "DataModule",
-    "MatrixDatasetWithLabelsFile",
-    "MatrixDatasetWithoutLabels",
     "UploadCallback",
+    "DatasetForInference"
 ]

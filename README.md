@@ -74,3 +74,19 @@ sims.setup_trainer(
 sims.train()
 ```
 This will train the SIMS model on the given expression matrices with target variable given by the `class_label` column in each label file.
+
+## Using SIMS inside github codespaces
+If you are using SIMS only for predictions using an already trained model, github codespaces is the recommended way to use this tool. You can also use this pipeline to train it in smaller datasets as the computing services offered in codespaces are modest.
+To use this tool in github codespaces start by forking the repo in your github account. Then create a new codespace with the SIMS repo as the Repository of choice.
+Once inside the newly created environment pull the latest SIMS image:
+```docker
+docker pull jmlehrer/sims:latest
+```
+Run the docker container mounting the file folder containing datasets and model checkpoints to the filesystem:
+```docker
+docker run -it -v /path/to/local/folder:/path/in/container [image_name] /bin/bash
+```
+Run main.py to check if the installation has been completed. You can alter this file as shown above to perform the different tasks.
+```bash
+python main.py
+```

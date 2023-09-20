@@ -176,7 +176,7 @@ def clean_sample(
 ) -> torch.Tensor:
 
     indices = np.intersect1d(currgenes, refgenes, return_indices=True)[1]
-    
+
     if sample.ndim == 2:
         sample = sample[:, indices]
     else:

@@ -226,6 +226,24 @@ class SIMSClassifier(pl.LightningModule):
 
         if isinstance(inference_data, str):
             inference_data = an.read_h5ad(inference_data)
+        
+        # handle zero inflation or deletion
+        inference_genes = inference_data.var_names
+        training_genes = self.genes
+
+        # more inference genes than training genes
+        if len(inference_genes - training_genes) > 0:
+            # then just only keep the columns in training genes
+            inference_data = inference_data[:, training_genes]
+        else:
+            # we need to insert zero columns in inference-data where training genes are missing
+            # this is because the network expects the same number of columns
+            diff = list(set(training_genes) - set(inference_genes))
+            for gene in diff:
+                inference_data.var[gene] = 0
+        
+        # now make sure the columns are the correct order
+        inference_data = inference_data[:, self.genes]
 
         if isinstance(inference_data, an.AnnData):
             inference_data = DatasetForInference(inference_data.X[rows, :] if rows is not None else inference_data.X)
@@ -307,7 +325,6 @@ class SIMSClassifier(pl.LightningModule):
             return f
 
     def predict(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
-        
         loader = self._parse_data(
             inference_data,
             batch_size=batch_size,
@@ -413,7 +430,7 @@ class SIMSClassifier(pl.LightningModule):
                 logits = self(data)[0]
                 logits_list.append(logits)
                 labels_list.append(label)
-            logits = torch.cat(logits_list) # (num_samples * batch_size, num_classes)
+            logits = torch.cat(logits_list) # (num_samples*batch_size, num_classes)
             labels = torch.cat(labels_list)
 
         # Calculate NLL and ECE before temperature scaling

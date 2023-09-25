@@ -13,6 +13,7 @@ from pytorch_tabnet.utils import create_explain_matrix
 from scipy.sparse import csc_matrix
 from torchmetrics.functional.classification.stat_scores import _stat_scores_update
 from tqdm import tqdm
+import torch.utils.data
 
 from scsims.data import CollateLoader
 from scsims.inference import DatasetForInference
@@ -232,9 +233,9 @@ class SIMSClassifier(pl.LightningModule):
         training_genes = self.genes
 
         # more inference genes than training genes
-        if len(inference_genes - training_genes) > 0:
+        if len(inference_genes) - len(training_genes) > 0:
             # then just only keep the columns in training genes
-            inference_data = inference_data[:, training_genes]
+            inference_data = inference_data[:, training_genes].copy()
         else:
             # we need to insert zero columns in inference-data where training genes are missing
             # this is because the network expects the same number of columns
@@ -325,6 +326,7 @@ class SIMSClassifier(pl.LightningModule):
             return f
 
     def predict(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+        print("parsing data...")
         loader = self._parse_data(
             inference_data,
             batch_size=batch_size,

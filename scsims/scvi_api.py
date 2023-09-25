@@ -19,15 +19,17 @@ class UnconfiguredModelError(Exception):
 class SIMS:
     def __init__(
         self,
+        *,
         weights_path: str = None,
-        *args,
+        data: an.AnnData = None,
+        class_label: str = None,
         **kwargs,
     ) -> None:
         print('Setting up data module ...')
         if weights_path is not None:
-            self.model = SIMSClassifier.load_from_checkpoint(weights_path, *args, **kwargs, strict=False)
+            self.model = SIMSClassifier.load_from_checkpoint(weights_path, **kwargs, strict=False)
 
-        self.datamodule = DataModule(*args, **kwargs)
+        self.datamodule = DataModule(data=data, class_label=class_label, **kwargs)
 
         for att, value in self.datamodule.__dict__.items():
             setattr(self, att, value)

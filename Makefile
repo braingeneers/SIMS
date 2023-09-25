@@ -11,7 +11,7 @@ push:
 	docker push $(CONTAINER)
 
 run:
-	docker run -it $(CONTAINER) /bin/bash
+	docker run -it -v "$(PWD):/src" $(CONTAINER) /bin/bash
 
 go:
 	make build && make push

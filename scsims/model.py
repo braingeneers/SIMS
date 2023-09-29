@@ -280,7 +280,6 @@ class SIMSClassifier(pl.LightningModule):
         all_labels[:] = np.nan
 
         for batch_nb, data in enumerate(tqdm(loader)):
-            print("DATA SHAPE IS", data.shape)
             # if we are running this on already labeled pairs and not just for inference
             if isinstance(data, tuple):
                 X, label = data

@@ -23,14 +23,9 @@ from scsims import SIMS
 from pytorch_lightning.loggers import WandbLogger
 logger = WandbLogger(offline=True)
 
-sims = SIMS(data=['my/data/file.h5ad'], class_label='class_label')
+data = an.read_h5ad('mydata.h5ad')
+sims = SIMS(data=data, class_label='class_label')
 sims.setup_trainer(accelerator="gpu", devices=1, logger=logger)
-sims.train()
-```
-
-This will automatically load in your `.h5ad` file, where the `class_label` is assumed to be a valid column in the `.obs` attribute. Alternatively, if your labels are stored in a separate csv, you may also initialize the class like
-```python
-sims = SIMS(data=['my/data/file.h5ad'], labelfiles=['my/label/file.csv'], class_label='class_label')
 sims.train()
 ```
 
@@ -39,8 +34,7 @@ This will set up the underlying dataloaders, model, model checkpointing, and eve
 To load in a model to infer new cell types on an unlabeled dataset, we load in the model checkpoint, point to the label file that we originally trained on, and run the `predict` method on new data.
 
 ```python
-sims = SIMS(weights_path='myawesomemodel.ckpt', labelfiles=['my/label/file.csv'], class_label='class_label')
-
+sims = SIMS(weights_path='myawesomemodel.ckpt')
 cell_predictions = sims.predict('my/new/unlabeled.h5ad')
 ```
 

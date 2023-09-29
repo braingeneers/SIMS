@@ -163,7 +163,6 @@ def _standard_collate(
 def _transform_sample(data: torch.Tensor, normalize: bool, transpose: bool) -> torch.Tensor:
     if transpose:
         data = data.T
-
     if normalize:
         data = torch.nn.functional.normalize(data)
 

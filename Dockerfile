@@ -12,21 +12,6 @@ RUN sudo apt-get --allow-releaseinfo-change update && \
     sudo \
     vim
 
-RUN pip install matplotlib \
-    seaborn \
-    pytorch-lightning \
-    comet_ml \
-    wandb \
-    pytorch-tabnet \
-    scanpy \
-    anndata \
-    scikit-learn \
-    boto3 \ 
-    tenacity \ 
-    pandas \
-    plotly \
-    scipy
-
-ENV cache=0
-RUN pip3 install --use-pep517 --no-cache git+https://github.com/braingeneers/SIMS.git
 COPY . .
+RUN pip install -r requirements.txt
+ENV PYTHONPATH "${PYTHONPATH}:/src"

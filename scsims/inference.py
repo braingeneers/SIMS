@@ -23,8 +23,6 @@ class DatasetForInference(Dataset):
         data = self.data[idx, :]
         if issparse(data):
             data = data.todense()
-            # Need to get first row of 1xp matrix, weirdly this is how to do it :shrug:
-            data = np.squeeze(np.asarray(data))
 
         data = torch.from_numpy(data)
         return data

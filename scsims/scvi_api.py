@@ -25,7 +25,6 @@ class SIMS:
         class_label: str = None,
         **kwargs,
     ) -> None:
-        print('Setting up data module ...')
         if weights_path is not None:
             self.model = SIMSClassifier.load_from_checkpoint(weights_path, **kwargs, strict=False)
 
@@ -97,20 +96,8 @@ class SIMS:
                 SIMS class. Reinitialize the SIMS class with the weights_path
                 pointing to the .ckpt file to continue."""
             )
-        results = self.model.predict(inference_data, *args, **kwargs)
-        try:
-            results = results.apply(lambda x: self.label_encoder.inverse_transform(x))
-        except Exception as e:
-            if "has no attribute" in str(e):
-                print("""
-                    Unable to decode numeric predictions back to class labels, since the original
-                    labelfile and class_label column were not passed upon initialization of the SIMS class. 
-                    Alternatively, call self.decode_predictions(labelfile) to convert the numeric labels to string names.
-                """)
-        self.results = results
-
-        print('Finished prediction, returning results and storing in results attribute ...')
-        return results
+        self.results = self.model.predict(inference_data, *args, **kwargs)
+        return self.results
 
     def explain(self, datafiles: an.AnnData, labelfile=None, class_label=None, *args, **kwargs):
         print('Computing explainability matrix ...')

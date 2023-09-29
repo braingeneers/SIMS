@@ -229,22 +229,23 @@ class SIMSClassifier(pl.LightningModule):
             inference_data = an.read_h5ad(inference_data)
         
         # handle zero inflation or deletion
-        inference_genes = inference_data.var_names
-        training_genes = self.genes
+        inference_genes = list(inference_data.var_names)
+        training_genes = list(self.genes)
 
         # more inference genes than training genes
+        assert len(set(inference_genes).intersection(set(training_genes))) > 0, "inference data shares zero genes with training data, double check the string formats and gene names"
         if len(inference_genes) - len(training_genes) > 0:
-            # then just only keep the columns in training genes
             inference_data = inference_data[:, training_genes].copy()
         else:
-            # we need to insert zero columns in inference-data where training genes are missing
-            # this is because the network expects the same number of columns
             diff = list(set(training_genes) - set(inference_genes))
-            for gene in diff:
-                inference_data.var[gene] = 0
-        
+            print(f"Inference data has {len(diff)} less genes than training; performing zero inflation.")
+
+            zero_inflation = an.AnnData(X=np.zeros((inference_data.shape[0], len(diff))), obs=inference_data.obs)
+            zero_inflation.var_names = diff
+            inference_data = an.concat([zero_inflation, inference_data], axis=1)
+
         # now make sure the columns are the correct order
-        inference_data = inference_data[:, self.genes]
+        inference_data = inference_data[:, training_genes].copy()
 
         if isinstance(inference_data, an.AnnData):
             inference_data = DatasetForInference(inference_data.X[rows, :] if rows is not None else inference_data.X)
@@ -279,6 +280,7 @@ class SIMSClassifier(pl.LightningModule):
         all_labels[:] = np.nan
 
         for batch_nb, data in enumerate(tqdm(loader)):
+            print("DATA SHAPE IS", data.shape)
             # if we are running this on already labeled pairs and not just for inference
             if isinstance(data, tuple):
                 X, label = data
@@ -369,6 +371,9 @@ class SIMSClassifier(pl.LightningModule):
             },
             axis=1,
         )
+
+        preds = preds.apply(lambda x: self.label_encoder.inverse_transform(x))
+
         probs = pd.DataFrame(probs)
         probs = probs.rename(
             {
@@ -384,9 +389,6 @@ class SIMSClassifier(pl.LightningModule):
         if not np.all(np.isnan(all_labels)):
             final["label"] = all_labels
 
-        if hasattr(self, "datamodule") and hasattr(self.datamodule, "label_encoder"):
-            encoder = self.datamodule.label_encoder
-            final = final.apply(lambda x: encoder.inverse_transform(x))
 
         # if network was in training mode before inference, set it back to that
         if prev_network_state:

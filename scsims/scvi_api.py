@@ -66,13 +66,13 @@ class SIMS:
             # check if any of the list of callbacks is a modelcheckpoint or timer
             callbacks = kwargs['callbacks']
             if not any([isinstance(callback, ModelCheckpoint) for callback in callbacks]):
-                callbacks.append(ModelCheckpoint())
+                callbacks.append(ModelCheckpoint(dirpath='./sims_checkpoints'))
             if not any([isinstance(callback, Timer) for callback in callbacks]):
                 callbacks.append(Timer())
             if not any([isinstance(callback, EarlyStopping) for callback in callbacks]) and early_stopping_patience is not None:
                 callbacks.append(EarlyStopping(monitor='val_loss', patience=early_stopping_patience))
         else:
-            kwargs['callbacks'] = [ModelCheckpoint(), Timer()]
+            kwargs['callbacks'] = [ModelCheckpoint(dirpath="./sims_checkpoints"), Timer()]
             if early_stopping_patience is not None:
                 kwargs['callbacks'].append(EarlyStopping(monitor='val_loss', patience=early_stopping_patience))
         self._trainer = pl.Trainer(*args, **kwargs)

@@ -234,16 +234,15 @@ class SIMSClassifier(pl.LightningModule):
 
         # more inference genes than training genes
         assert len(set(inference_genes).intersection(set(training_genes))) > 0, "inference data shares zero genes with training data, double check the string formats and gene names"
-        if len(inference_genes) - len(training_genes) > 0:
+        if len(inference_genes) > len(training_genes):
             inference_data = inference_data[:, training_genes].copy()
-        else:
+        if len(inference_genes) < len(training_genes):
             diff = list(set(training_genes) - set(inference_genes))
             print(f"Inference data has {len(diff)} less genes than training; performing zero inflation.")
 
             zero_inflation = an.AnnData(X=np.zeros((inference_data.shape[0], len(diff))), obs=inference_data.obs)
             zero_inflation.var_names = diff
             inference_data = an.concat([zero_inflation, inference_data], axis=1)
-
         # now make sure the columns are the correct order
         inference_data = inference_data[:, training_genes].copy()
 
@@ -327,7 +326,7 @@ class SIMSClassifier(pl.LightningModule):
             return f
 
     def predict(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
-        print("parsing data...")
+        print("Parsing inference data...")
         loader = self._parse_data(
             inference_data,
             batch_size=batch_size,

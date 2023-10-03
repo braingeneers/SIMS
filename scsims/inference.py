@@ -22,7 +22,7 @@ class DatasetForInference(Dataset):
 
         data = self.data[idx, :]
         if issparse(data):
-            data = data.todense()
+            data = np.asarray(data.todense()).squeeze()
 
         data = torch.from_numpy(data)
         return data

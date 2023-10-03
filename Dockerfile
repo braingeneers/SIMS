@@ -12,6 +12,7 @@ RUN sudo apt-get --allow-releaseinfo-change update && \
     sudo \
     vim
 
-COPY . .
+COPY requirements.txt .
 RUN pip install -r requirements.txt
+COPY . .
 ENV PYTHONPATH "${PYTHONPATH}:/src"

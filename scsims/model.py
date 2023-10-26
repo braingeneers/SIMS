@@ -234,15 +234,20 @@ class SIMSClassifier(pl.LightningModule):
 
         # more inference genes than training genes
         assert len(set(inference_genes).intersection(set(training_genes))) > 0, "inference data shares zero genes with training data, double check the string formats and gene names"
-        if len(inference_genes) > len(training_genes):
-            inference_data = inference_data[:, training_genes].copy()
-        if len(inference_genes) < len(training_genes):
-            diff = list(set(training_genes) - set(inference_genes))
-            print(f"Inference data has {len(diff)} less genes than training; performing zero inflation.")
 
-            zero_inflation = an.AnnData(X=np.zeros((inference_data.shape[0], len(diff))), obs=inference_data.obs)
-            zero_inflation.var_names = diff
+        left_genes = list(set(inference_genes) - set(training_genes))  # genes in inference that aren't in training
+        right_genes = list(set(training_genes) - set(inference_genes))  # genes in training that aren't in inference 
+        intersection_genes = list(set(inference_genes).intersection(set(training_genes))) # genes in both
+
+        if len(left_genes) > 0:
+            inference_data = inference_data[:, intersection_genes].copy()
+        if len(right_genes) > 0:
+            print(f"Inference data has {len(right_genes)} less genes than training; performing zero inflation.")
+
+            zero_inflation = an.AnnData(X=np.zeros((inference_data.shape[0], len(right_genes))), obs=inference_data.obs)
+            zero_inflation.var_names = right_genes
             inference_data = an.concat([zero_inflation, inference_data], axis=1)
+
         # now make sure the columns are the correct order
         inference_data = inference_data[:, training_genes].copy()
 

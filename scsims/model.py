@@ -289,7 +289,7 @@ class SIMSClassifier(pl.LightningModule):
                 X, label = data
                 all_labels[batch_nb * batch_size : (batch_nb + 1) * batch_size] = label
             else:
-                X = data
+                X = data.float()
 
             M_explain, masks = self.network.forward_masks(X)
             for key, value in masks.items():

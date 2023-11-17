@@ -355,6 +355,7 @@ class SIMSClassifier(pl.LightningModule):
         probs[:] = np.nan
 
         prev_network_state = self.network.training
+        self.network.eval()
 
         # batch size might differ if user passes in a dataloader
         batch_size = loader.batch_size

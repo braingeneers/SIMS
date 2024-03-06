@@ -16,6 +16,9 @@ Otherwise, enter your virtual environment of choice and
 2. Set up the model training code in a `MYFILE.py` file, and run it with `python MYFILE.py`. A tutorial on how to set up training code is shown below.
 
 ## Training and inference
+The sims library uses a cell-by-gene matrix. This means our input data to the model should be 
+an (M, N) matrix of M cells with expression levels across N different genes. The data should be log1p normalized before model training and model inference. 
+
 To train a model, we can set up a SIMS class in the following way:
 
 ```python 

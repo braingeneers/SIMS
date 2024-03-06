@@ -49,7 +49,9 @@ To customize the underlying `pl.Trainer` and SIMS model params, we can initializ
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 from scsims import SIMS
+import anndata as an
 
+adata = an.read_h5ad("my_labeled_data.h5ad")  # can read h5 using anndata as well
 wandb_logger = WandbLogger(project=f"My Project", name=f"SIMS Model Training") # set up the logger to log data to Weights and Biases
 
 sims = SIMS(data=adata, class_label='class_label')

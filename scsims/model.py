@@ -193,7 +193,7 @@ class SIMSClassifier(pl.LightningModule):
             value = metric.compute()
             self.log(f"val_{name}", value=value)
             metric.reset()
-    
+
     def configure_optimizers(self):
         if "optimizer" in self.optim_params:
             optimizer = self.optim_params.pop("optimizer")

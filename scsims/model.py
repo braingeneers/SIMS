@@ -54,8 +54,6 @@ class SIMSClassifier(pl.LightningModule):
         **kwargs,
     ) -> None:
         super().__init__()
-        self.save_hyperparameters()
-
         self.genes = genes
         self.cells = cells
         self.label_encoder = label_encoder

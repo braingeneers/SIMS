@@ -82,8 +82,8 @@ class SIMSClassifier(pl.LightningModule):
             if optim_params is not None
             else {
                 "optimizer": torch.optim.Adam,
-                "lr": 3e-4,
-                "weight_decay": 1e-8,
+                "lr": 0.01,
+                "weight_decay": 0.01,
             }
         )
 

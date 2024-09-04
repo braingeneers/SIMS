@@ -9,7 +9,6 @@ from scsims.lightning_train import DataModule
 from scsims.model import SIMSClassifier
 import pandas as pd 
 from sklearn.preprocessing import LabelEncoder
-from torchvision.models import resnet18
 
 here = pathlib.Path(__file__).parent.absolute()
 

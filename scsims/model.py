@@ -227,6 +227,7 @@ class SIMSClassifier(pl.LightningModule):
             inference_data = an.read_h5ad(inference_data)
         
         # handle zero inflation or deletion
+        #TODO: Increase speed and memory consumption of zero inflation
         inference_genes = list(inference_data.var_names)
         training_genes = list(self.genes)
 

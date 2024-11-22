@@ -365,32 +365,20 @@ class SIMSClassifier(pl.LightningModule):
             probs[idx * batch_size : (idx + 1) * batch_size] = top_probs
 
         preds = pd.DataFrame(preds).astype(int)
-        preds = preds.rename(
-            {
-                0: "first_pred",
-                1: "second_pred",
-                2: "third_pred",
-            },
-            axis=1,
-        )
+
+        cols = {i: f"pred_{i}" for i in range(preds.shape[1])}
+        preds = preds.rename(columns=cols, axis=1)
 
         preds = preds.apply(lambda x: self.label_encoder.inverse_transform(x))
 
         probs = pd.DataFrame(probs)
-        probs = probs.rename(
-            {
-                0: "first_prob",
-                1: "second_prob",
-                2: "third_prob",
-            },
-            axis=1,
-        )
+        probs = {i: f"prob_{i}" for i in range(probs.shape[1])}
+        probs = probs.rename(columns=probs, axis=1)
 
         final = pd.concat([preds, probs], axis=1)
 
         if not np.all(np.isnan(all_labels)):
             final["label"] = all_labels
-
 
         # if network was in training mode before inference, set it back to that
         if prev_network_state:
@@ -405,7 +393,8 @@ class SIMSClassifier(pl.LightningModule):
             data, label = batch, None
         data = data.float()
         res = self(data)[0]
-        probs, top_preds = res.topk(3, axis=1)  # to get indices
+        num_sample = min(self.label_encoder.num_classes, 3)
+        probs, top_preds = res.topk(num_sample, axis=1)  # to get indices
         probs = probs.softmax(dim=-1)
 
         return probs.detach().cpu().numpy(), top_preds.detach().cpu().numpy(), label

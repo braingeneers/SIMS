@@ -14,7 +14,7 @@ from scipy.sparse import csc_matrix
 from torchmetrics.functional.classification.stat_scores import _stat_scores_update
 from tqdm import tqdm
 import torch.utils.data
-
+from scipy.sparse import csr_matrix
 from scsims.data import CollateLoader
 from scsims.inference import DatasetForInference
 from scsims.temperature_scaling import _ECELoss
@@ -227,6 +227,7 @@ class SIMSClassifier(pl.LightningModule):
             inference_data = an.read_h5ad(inference_data)
         
         # handle zero inflation or deletion
+        #TODO: Increase speed and memory consumption of zero inflation
         inference_genes = list(inference_data.var_names)
         training_genes = list(self.genes)
 
@@ -242,7 +243,8 @@ class SIMSClassifier(pl.LightningModule):
         if len(right_genes) > 0:
             print(f"Inference data has {len(right_genes)} less genes than training; performing zero inflation.")
 
-            zero_inflation = an.AnnData(X=np.zeros((inference_data.shape[0], len(right_genes))), obs=inference_data.obs)
+            #zero_inflation = an.AnnData(X=np.zeros((inference_data.shape[0], len(right_genes))), obs=inference_data.obs)
+            zero_inflation = an.AnnData(X= csr_matrix((inference_data.shape[0], len(right_genes))),obs=inference_data.obs)
             zero_inflation.var_names = right_genes
             inference_data = an.concat([zero_inflation, inference_data], axis=1)
 

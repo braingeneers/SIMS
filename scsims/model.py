@@ -19,6 +19,7 @@ from scsims.data import CollateLoader
 from scsims.inference import DatasetForInference
 from scsims.temperature_scaling import _ECELoss
 from torchmetrics import Accuracy, F1Score, Precision, Recall, Specificity
+from sklearn.preprocessing import LabelEncoder
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -49,7 +50,7 @@ class SIMSClassifier(pl.LightningModule):
         no_explain: bool = False,
         genes: list[str] = None,
         cells: list[str] = None,
-        label_encoder: Callable = None,
+        label_encoder: LabelEncoder = None,
         *args,
         **kwargs,
     ) -> None:
@@ -395,7 +396,7 @@ class SIMSClassifier(pl.LightningModule):
             data, label = batch, None
         data = data.float()
         res = self(data)[0]
-        num_sample = min(self.label_encoder.num_classes, 3)
+        num_sample = min(len(self.label_encoder.classes_), 3)
         probs, top_preds = res.topk(num_sample, axis=1)  # to get indices
         probs = probs.softmax(dim=-1)
 

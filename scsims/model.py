@@ -369,14 +369,11 @@ class SIMSClassifier(pl.LightningModule):
 
         preds = pd.DataFrame(preds).astype(int)
 
-        cols = {i: f"pred_{i}" for i in range(preds.shape[1])}
-        preds = preds.rename(columns=cols, axis=1)
-
+        preds = preds.rename(columns={i: f"pred_{i}" for i in range(preds.shape[1])})
         preds = preds.apply(lambda x: self.label_encoder.inverse_transform(x))
 
         probs = pd.DataFrame(probs)
-        probs = {i: f"prob_{i}" for i in range(probs.shape[1])}
-        probs = probs.rename(columns=probs, axis=1)
+        probs = probs.rename(columns={i: f"prob_{i}" for i in range(probs.shape[1])})
 
         final = pd.concat([preds, probs], axis=1)
 

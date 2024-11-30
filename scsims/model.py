@@ -345,14 +345,15 @@ class SIMSClassifier(pl.LightningModule):
 
         # initialize arrays in memory and fill with nans to start
         # this makes it easier to see bugs/wrong predictions than filling zeros
-        preds = np.empty((len(loader.dataset), 3))
+        num_cls_to_save = min(3, len(self.label_encoder.classes_))
+        preds = np.empty((len(loader.dataset), num_cls_to_save))
         preds[:] = np.nan
 
         all_labels = np.empty(len(loader.dataset))
         all_labels[:] = np.nan
 
         # save probs 
-        probs = np.empty((len(loader.dataset), 3))
+        probs = np.empty((len(loader.dataset), num_cls_to_save))
         probs[:] = np.nan
 
         prev_network_state = self.network.training

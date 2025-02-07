@@ -24,9 +24,19 @@ To train a model, we can set up a SIMS class in the following way:
 ```python 
 from scsims import SIMS
 from pytorch_lightning.loggers import WandbLogger
+import scanpy as sc
+
 logger = WandbLogger(offline=True)
 
 data = an.read_h5ad('mydata.h5ad')
+#Perform some light filtering
+sc.pp.filter_cells(adata, min_genes=100)
+sc.pp.filter_genes(adata, min_cells=3)
+#Transform the data for model ingestion
+sc.pp.normalize_total(adata)#Normalize counts per cell
+sc.pp.log1p(adata) ### Logarithmizing the data
+sc.pp.scale(adata) #Scale mean to zero and variance to 1
+
 sims = SIMS(data=data, class_label='class_label')
 sims.setup_trainer(accelerator="gpu", devices=1, logger=logger)
 sims.train()
@@ -37,8 +47,19 @@ This will set up the underlying dataloaders, model, model checkpointing, and eve
 To load in a model to infer new cell types on an unlabeled dataset, we load in the model checkpoint, point to the label file that we originally trained on, and run the `predict` method on new data.
 
 ```python
-sims = SIMS(weights_path='myawesomemodel.ckpt')
-cell_predictions = sims.predict('my/new/unlabeled.h5ad')
+sims = SIMS(weights_path='myawesomemodel.ckpt')# If the model has been trained on GPU move the weights to CPU, this is the case for our pretrained models
+#SIMS(weights_path=checkpoint_path,map_location=torch.device('cpu'))
+
+unlabeled_data = an.read_h5ad('my/new/unlabeled.h5ad')
+#Process the data the same way you processed the training data. For all our pretrained models we followed this steps.
+sc.pp.filter_cells(unlabeled_data, min_genes=100)
+sc.pp.filter_genes(unlabeled_data, min_cells=3)
+#Transform the data for model ingestion
+sc.pp.normalize_total(unlabeled_data)#Normalize counts per cell
+sc.pp.log1p(unlabeled_data) ### Logarithmizing the data
+sc.pp.scale(unlabeled_data) #Scale mean to zero and variance to 1
+#Perform the predictions
+cell_predictions = sims.predict(unlabeled_data)
 ```
 
 Finally, to look at the explainability of the model, we similarly run 

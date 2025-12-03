@@ -28,7 +28,7 @@ import scanpy as sc
 
 logger = WandbLogger(offline=True)
 
-data = an.read_h5ad('mydata.h5ad')
+adata = sc.read_h5ad('mydata.h5ad')
 #Perform some light filtering
 sc.pp.filter_cells(adata, min_genes=100)
 sc.pp.filter_genes(adata, min_cells=3)
@@ -37,7 +37,7 @@ sc.pp.normalize_total(adata)#Normalize counts per cell
 sc.pp.log1p(adata) ### Logarithmizing the data
 sc.pp.scale(adata) #Scale mean to zero and variance to 1
 
-sims = SIMS(data=data, class_label='class_label')
+sims = SIMS(data=adata, class_label='class_label')
 sims.setup_trainer(accelerator="gpu", devices=1, logger=logger)
 sims.train()
 ```
@@ -50,7 +50,7 @@ To load in a model to infer new cell types on an unlabeled dataset, we load in t
 sims = SIMS(weights_path='myawesomemodel.ckpt')# If the model has been trained on GPU move the weights to CPU, this is the case for our pretrained models
 #SIMS(weights_path=checkpoint_path,map_location=torch.device('cpu'))
 
-unlabeled_data = an.read_h5ad('my/new/unlabeled.h5ad')
+unlabeled_data = sc.read_h5ad('my/new/unlabeled.h5ad')
 #Process the data the same way you processed the training data. For all our pretrained models we followed this steps.
 sc.pp.filter_cells(unlabeled_data, min_genes=100)
 sc.pp.filter_genes(unlabeled_data, min_cells=3)

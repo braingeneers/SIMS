@@ -203,6 +203,13 @@ class SIMS:
     # ------------------------------------------------------------------
 
     def train(self, *args, **kwargs):
+        if self.datamodule.class_label is None:
+            raise ValueError(
+                "SIMS.train() is supervised and requires a class_label. Build "
+                "the SIMS instance with `SIMS(data=adata, class_label=...)` "
+                "before calling .train(). For unsupervised pretraining on an "
+                "unlabeled dataset, use SIMS(data=adata).pretrain(...) instead."
+            )
         print("Beginning training")
         if not hasattr(self, "_trainer"):
             self.setup_trainer(*args, **kwargs)

@@ -8,6 +8,7 @@ from typing import *
 
 import anndata as an
 import numpy as np
+import pandas as pd
 import torch
 from scipy.sparse import issparse
 from sklearn.model_selection import train_test_split
@@ -186,7 +187,7 @@ def clean_sample(
 
 def generate_dataloaders(
     data: an.AnnData,
-    class_label: str,
+    class_label: Optional[str] = None,
     test_prop=0.2,
     stratify=True,
     batch_size: int = 16,
@@ -199,11 +200,21 @@ def generate_dataloaders(
     if isinstance(data, str):
         data = an.read_h5ad(data)
 
-    current_labels = data.obs.loc[:, class_label]
+    if class_label is None:
+        # Unsupervised mode (e.g. pretraining): no real labels exist. Use a
+        # zero placeholder so AnnDatasetMatrix still yields (features, label)
+        # tuples — the pretrainer's training step discards the label
+        # component anyway. Stratification has no meaning here.
+        current_labels = pd.Series(
+            np.zeros(data.shape[0], dtype=np.int64),
+            index=data.obs.index,
+        )
+        stratify = False
+    else:
+        current_labels = data.obs.loc[:, class_label]
 
-    # make sure data can be stratified
-    if stratify:
-        if len(current_labels.unique()) < 3:
+        # make sure data can be stratified
+        if stratify and len(current_labels.unique()) < 3:
             warnings.warn(
                 "One class has less than 3 samples, disabling stratification"
             )

@@ -116,10 +116,10 @@ labeled fine-tuning set.
 from scsims import SIMS
 import scanpy as sc
 
+# Stage 1: unsupervised pretraining on a large unlabeled corpus.
+# No class_label needed -- the pretrainer never reads cell type labels.
 unlabeled = sc.read_h5ad("big_unlabeled_corpus.h5ad")
-sims = SIMS(data=unlabeled, class_label="cell_type")  # label col is ignored at this stage
-
-# Stage 1: unsupervised pretraining. Cell type labels are not used.
+sims = SIMS(data=unlabeled)
 sims.pretrain(
     pretraining_ratio=0.2,
     accelerator="gpu",
@@ -127,9 +127,10 @@ sims.pretrain(
     max_epochs=50,
 )
 
-# Stage 2: supervised fine-tuning. SIMS automatically detects the
-# attached pretrainer and warm-starts the classifier from its encoder
-# weights before fitting.
+# Stage 2: supervised fine-tuning on a smaller labeled set. Build a
+# fresh SIMS with the labels, load the pretrainer checkpoint, and
+# train(). SIMS automatically warm-starts the classifier from the
+# pretrained encoder before fitting.
 labeled = sc.read_h5ad("smaller_labeled_set.h5ad")
 sims = SIMS(data=labeled, class_label="cell_type")
 sims.load_pretrainer("./sims_pretrain_checkpoints/best.ckpt")

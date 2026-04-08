@@ -57,10 +57,14 @@ class DataModule(pl.LightningDataModule):
             self.setup()
 
     def prepare_data(self):
-        unique_targets = self.data.obs.loc[:, self.class_label].unique()
-        label_encoder = LabelEncoder().fit(unique_targets)
+        # `class_label` is optional: pretraining workflows pass an unlabeled
+        # AnnData and never set it. In that case there's nothing to encode.
+        if self.class_label is None:
+            self.label_encoder = None
+            return
 
-        self.label_encoder = label_encoder
+        unique_targets = self.data.obs.loc[:, self.class_label].unique()
+        self.label_encoder = LabelEncoder().fit(unique_targets)
 
         if not pd.api.types.is_numeric_dtype(self.data.obs.loc[:, self.class_label]):
             print("Numerically encoding class labels")
@@ -86,18 +90,22 @@ class DataModule(pl.LightningDataModule):
             self.trainloader = loaders[0]
             self.valloader = None
             self.testloader = None
-        else: 
+        else:
             self.trainloader, self.valloader, self.testloader = loaders
 
-        print("Calculating weights")
-        labels = self.data.obs.loc[:, self.class_label].values
-        self.weights = torch.from_numpy(
-            compute_class_weight(
-                y=labels,
-                classes=np.unique(labels),
-                class_weight="balanced",
-            )
-        ).float()
+        if self.class_label is None:
+            # No labels => no class weights. Pretraining doesn't use them.
+            self.weights = None
+        else:
+            print("Calculating weights")
+            labels = self.data.obs.loc[:, self.class_label].values
+            self.weights = torch.from_numpy(
+                compute_class_weight(
+                    y=labels,
+                    classes=np.unique(labels),
+                    class_weight="balanced",
+                )
+            ).float()
 
         self.setuped = True
 
@@ -112,6 +120,8 @@ class DataModule(pl.LightningDataModule):
 
     @cached_property
     def num_labels(self):
+        if self.class_label is None:
+            return None
         return self.data.obs.loc[:, self.class_label].nunique()
 
     @cached_property

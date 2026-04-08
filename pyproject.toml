@@ -10,10 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
-    { name = "Julian Lehrer", email = "jmlehrer@ucsc.edu" },
-]
-maintainers = [
-    { name = "Jesus Gonzalez-Ferrer" },
+    { name = "Jesus Gonzalez-Ferrer", email = "jgonz373@ucsc.edu" },
 ]
 keywords = ["single-cell", "rna-seq", "tabnet", "deep-learning", "classification"]
 classifiers = [

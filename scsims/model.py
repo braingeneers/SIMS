@@ -324,11 +324,41 @@ class SIMSClassifier(pl.LightningModule):
         inference_data: Union[str, an.AnnData, np.ndarray],
         batch_size: int = 32,
         num_workers: int = 4,
+        top_k: int = 3,
         rows=None,
         currgenes=None,
         refgenes=None,
         **kwargs,
-    ):
+    ) -> pd.DataFrame:
+        """Run inference and return the top-``top_k`` predicted labels per cell.
+
+        Parameters
+        ----------
+        inference_data:
+            An :class:`anndata.AnnData`, the path to an ``.h5ad`` file, or a
+            raw numpy array of shape ``(n_cells, n_genes)``.
+        batch_size:
+            Inference batch size.
+        num_workers:
+            DataLoader worker count.
+        top_k:
+            Number of ranked predictions to return per cell. Capped at the
+            number of training classes. Defaults to ``3``.
+        rows, currgenes, refgenes:
+            Forwarded to :meth:`_parse_data` for partial-row and gene-alignment
+            workflows.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per cell with columns ``pred_0`` … ``pred_{top_k-1}`` (the
+            decoded label strings) and ``prob_0`` … ``prob_{top_k-1}`` (the
+            corresponding softmax probabilities).
+        """
+        if top_k < 1:
+            raise ValueError(f"top_k must be >= 1, got {top_k}")
+        effective_top_k = min(top_k, len(self.label_encoder.classes_))
+
         print("Parsing inference data...")
         loader = self._parse_data(
             inference_data,
@@ -337,65 +367,77 @@ class SIMSClassifier(pl.LightningModule):
             rows=rows,
             currgenes=currgenes,
             refgenes=refgenes,
-            **kwargs
+            **kwargs,
         )
 
-        # initialize arrays in memory and fill with nans to start
-        # this makes it easier to see bugs/wrong predictions than filling zeros
-        num_cls_to_save = min(3, len(self.label_encoder.classes_))
-        preds = np.empty((len(loader.dataset), num_cls_to_save))
-        preds[:] = np.nan
-
-        all_labels = np.empty(len(loader.dataset))
-        all_labels[:] = np.nan
-
-        # save probs 
-        probs = np.empty((len(loader.dataset), num_cls_to_save))
-        probs[:] = np.nan
+        n_rows = len(loader.dataset)
+        preds = np.full((n_rows, effective_top_k), np.nan)
+        probs = np.full((n_rows, effective_top_k), np.nan)
+        all_labels = np.full(n_rows, np.nan)
 
         prev_network_state = self.network.training
         self.network.eval()
 
         # batch size might differ if user passes in a dataloader
-        batch_size = loader.batch_size
-        for idx, X in enumerate(tqdm(loader)):
-            # Some dataloaders will have all_labels, handle this case
-            top_probs, top_preds, label = self.predict_step(batch=X, batch_idx=idx)
-            all_labels[idx * batch_size : (idx + 1) * batch_size] = label
-            preds[idx * batch_size : (idx + 1) * batch_size] = top_preds
-            probs[idx * batch_size : (idx + 1) * batch_size] = top_probs
+        loader_batch_size = loader.batch_size
+        with torch.no_grad():
+            for idx, batch in enumerate(tqdm(loader)):
+                top_probs, top_preds, label = self._inference_batch(
+                    batch, top_k=effective_top_k
+                )
+                start = idx * loader_batch_size
+                stop = start + top_preds.shape[0]
+                preds[start:stop] = top_preds
+                probs[start:stop] = top_probs
+                if label is not None:
+                    all_labels[start:stop] = label
 
-        preds = pd.DataFrame(preds).astype(int)
-
-        preds = preds.rename(columns={i: f"pred_{i}" for i in range(preds.shape[1])})
-        preds = preds.apply(lambda x: self.label_encoder.inverse_transform(x))
-
-        probs = pd.DataFrame(probs)
-        probs = probs.rename(columns={i: f"prob_{i}" for i in range(probs.shape[1])})
-
-        final = pd.concat([preds, probs], axis=1)
-
-        if not np.all(np.isnan(all_labels)):
-            final["label"] = all_labels
-
-        # if network was in training mode before inference, set it back to that
+        # restore previous training mode
         if prev_network_state:
             self.network.train()
 
+        preds_df = pd.DataFrame(
+            preds.astype(int),
+            columns=[f"pred_{i}" for i in range(effective_top_k)],
+        )
+        preds_df = preds_df.apply(lambda c: self.label_encoder.inverse_transform(c))
+
+        probs_df = pd.DataFrame(
+            probs,
+            columns=[f"prob_{i}" for i in range(effective_top_k)],
+        )
+
+        final = pd.concat([preds_df, probs_df], axis=1)
+        if not np.all(np.isnan(all_labels)):
+            final["label"] = all_labels
         return final
 
-    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
-        if len(batch) == 2:
+    def _inference_batch(self, batch, top_k: int):
+        """Run a single inference batch and return ``(probs, preds, labels)``.
+
+        Internal helper used by :meth:`predict`. Kept separate from
+        :meth:`predict_step` (which is the Lightning hook) so that ``top_k``
+        can be passed in without conflicting with Lightning's fixed signature.
+        """
+        if isinstance(batch, (list, tuple)) and len(batch) == 2:
             data, label = batch
+            label = label.detach().cpu().numpy() if torch.is_tensor(label) else label
         else:
             data, label = batch, None
         data = data.float()
-        res = self(data)[0]
-        num_sample = min(len(self.label_encoder.classes_), 3)
-        probs, top_preds = res.topk(num_sample, axis=1)  # to get indices
+        logits = self(data)[0]
+        probs, preds = logits.topk(top_k, dim=1)
         probs = probs.softmax(dim=-1)
+        return (
+            probs.detach().cpu().numpy(),
+            preds.detach().cpu().numpy(),
+            label,
+        )
 
-        return probs.detach().cpu().numpy(), top_preds.detach().cpu().numpy(), label
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+        """Lightning ``predict_step`` hook. Returns top-3 by default."""
+        top_k = min(3, len(self.label_encoder.classes_))
+        return self._inference_batch(batch, top_k=top_k)
  
     def temperature_scale(self, logits):
         """

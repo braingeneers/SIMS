@@ -1,235 +1,268 @@
-from typing import *
+"""TabNet self-supervised pretraining for SIMS.
 
+This module provides :class:`SIMSPretrainer`, a Lightning module that runs
+TabNet self-supervised pretraining (random feature obfuscation +
+reconstruction loss, as described in section 3.4 of the original TabNet
+paper). The encoder learned during pretraining can be transferred into a
+fresh :class:`scsims.SIMSClassifier` to warm-start supervised fine-tuning.
+
+Typical usage:
+
+.. code-block:: python
+
+    from scsims import SIMS
+
+    sims = SIMS(data=adata, class_label="cell_type")
+
+    # Stage 1: unsupervised pretraining on the same dataset (or a larger
+    # unlabeled one).
+    sims.pretrain(max_epochs=50, accelerator="gpu", devices=1)
+
+    # Stage 2: supervised fine-tuning with the pretrained encoder
+    # warm-started automatically.
+    sims.train(max_epochs=20, accelerator="gpu", devices=1)
+
+Notes
+-----
+- Pretraining is unsupervised: cell type labels in the AnnData object are
+  ignored entirely. The DataModule still yields ``(features, labels)``
+  tuples; we discard the labels.
+- The pretrainer is an ordinary ``pl.LightningModule``, so any Lightning
+  ``Trainer`` knob (DDP, mixed precision, callbacks, loggers) works as
+  you would expect.
+"""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from typing import Any, Optional
+
+import lightning.pytorch as pl
 import numpy as np
-import pytorch_lightning as pl
 import torch
-from pytorch_tabnet.tab_network import (EmbeddingGenerator, RandomObfuscator,
-                                        TabNetDecoder, TabNetEncoder)
+from pytorch_tabnet.tab_network import TabNetPretraining
+from pytorch_tabnet.utils import create_group_matrix
 
 
-# ALL THIS IS FLATTENING THE API FROM https://github.com/dreamquark-ai/tabnet
-class NoiseObfuscator(torch.nn.Module):
-    def __init__(
-        self,
-        variance: float = 1,
-    ) -> None:
-        """
-        Custom dataset interiting from parent Dataset that adds Gaussian noise with a given variance to each sample, to be used for pretraining
-
-        :param variance: Variance of Gaussian noise, defaults to 1
-        :type variance: float, optional
-        """
-
-        self.variance = variance
-
-    def forward(self, x):
-        return x + self.variance * torch.randn_like(x)
+# ---------------------------------------------------------------------------
+# Loss functions
+# ---------------------------------------------------------------------------
 
 
-def UnsupervisedLoss(y_pred, embedded_x, obf_vars, eps=1e-9):
-    """
-    Implements unsupervised loss function.
-    This differs from orginal paper as it's scaled to be batch size independent
-    and number of features reconstructed independent (by taking the mean)
+def unsupervised_reconstruction_loss(
+    y_pred: torch.Tensor,
+    embedded_x: torch.Tensor,
+    obf_vars: torch.Tensor,
+    eps: float = 1e-9,
+) -> torch.Tensor:
+    """TabNet self-supervised reconstruction loss.
+
+    Computes the squared reconstruction error of the obfuscated features,
+    normalized by per-feature variance so that high-variance features don't
+    dominate the loss. Mirrors the formulation from the TabNet paper.
+
     Parameters
     ----------
-    y_pred : torch.Tensor or np.array
-        Reconstructed prediction (with embeddings)
-    embedded_x : torch.Tensor
-        Original input embedded by network
-    obf_vars : torch.Tensor
-        Binary mask for obfuscated variables.
-        1 means the variable was obfuscated so reconstruction is based on this.
-    eps : float
-        A small floating point to avoid ZeroDivisionError
-        This can happen in degenerated case when a feature has only one value
-    Returns
-    -------
-    loss : torch float
-        Unsupervised loss, average value over batch samples.
+    y_pred:
+        Reconstructed embeddings from the decoder, shape ``(batch, post_embed_dim)``.
+    embedded_x:
+        The original (un-obfuscated) embeddings produced by the embedder.
+    obf_vars:
+        Binary mask, ``1`` where the feature was obfuscated and the model
+        is being asked to reconstruct it.
+    eps:
+        Numerical safety floor for the per-row normalisation.
     """
     errors = y_pred - embedded_x
-    reconstruction_errors = torch.mul(errors, obf_vars) ** 2
-    batch_means = torch.mean(embedded_x, dim=0)
-    batch_means[batch_means == 0] = 1
+    reconstruction_errors = (errors * obf_vars) ** 2
 
-    batch_stds = torch.std(embedded_x, dim=0) ** 2
-    batch_stds[batch_stds == 0] = batch_means[batch_stds == 0]
-    features_loss = torch.matmul(reconstruction_errors, 1 / batch_stds)
-    # compute the number of obfuscated variables to reconstruct
-    nb_reconstructed_variables = torch.sum(obf_vars, dim=1)
-    # take the mean of the reconstructed variable errors
-    features_loss = features_loss / (nb_reconstructed_variables + eps)
-    # here we take the mean per batch, contrary to the paper
-    loss = torch.mean(features_loss)
-    return loss
+    # Normalise by per-feature variance to weight all features comparably.
+    batch_means = embedded_x.mean(dim=0)
+    batch_means = torch.where(
+        batch_means == 0,
+        torch.ones_like(batch_means),
+        batch_means,
+    )
+    batch_vars = embedded_x.var(dim=0, unbiased=False)
+    batch_vars = torch.where(batch_vars == 0, batch_means, batch_vars)
+
+    features_loss = torch.matmul(reconstruction_errors, 1.0 / batch_vars)
+
+    # Average over the number of obfuscated variables per row.
+    nb_obfuscated = obf_vars.sum(dim=1)
+    features_loss = features_loss / (nb_obfuscated + eps)
+
+    return features_loss.mean()
 
 
-def UnsupervisedLossNumpy(y_pred, embedded_x, obf_vars, eps=1e-9):
-    """Compute Euclidean distance between reconstructed and original vector
+# ---------------------------------------------------------------------------
+# LightningModule
+# ---------------------------------------------------------------------------
 
-    :param y_pred: _description_
-    :type y_pred: _type_
-    :param embedded_x: _description_
-    :type embedded_x: _type_
-    :param obf_vars: _description_
-    :type obf_vars: _type_
-    :param eps: _description_, defaults to 1e-9
-    :type eps: _type_, optional
-    :return: _description_
-    :rtype: _type_
+
+class SIMSPretrainer(pl.LightningModule):
+    """Lightning wrapper around :class:`pytorch_tabnet.tab_network.TabNetPretraining`.
+
+    Parameters mirror :class:`scsims.SIMSClassifier` so that pretrainer and
+    classifier hyperparameters stay aligned. Genes are stored on the
+    pretrainer so a downstream :class:`scsims.SIMSClassifier` can be
+    sanity-checked against the same input ordering.
     """
-    errors = y_pred - embedded_x
-    reconstruction_errors = np.multiply(errors, obf_vars) ** 2
-    batch_means = np.mean(embedded_x, axis=0)
-    batch_means = np.where(batch_means == 0, 1, batch_means)
 
-    batch_stds = np.std(embedded_x, axis=0, ddof=1) ** 2
-    batch_stds = np.where(batch_stds == 0, batch_means, batch_stds)
-    features_loss = np.matmul(reconstruction_errors, 1 / batch_stds)
-    # compute the number of obfuscated variables to reconstruct
-    nb_reconstructed_variables = np.sum(obf_vars, axis=1)
-    # take the mean of the reconstructed variable errors
-    features_loss = features_loss / (nb_reconstructed_variables + eps)
-    # here we take the mean per batch, contrary to the paper
-    loss = np.mean(features_loss)
-    return loss
-
-
-class TabNetPretraining(pl.LightningModule):
     def __init__(
         self,
-        input_dim,
-        pretraining_ratio=0.2,
-        n_d=8,
-        n_a=8,
-        n_steps=3,
-        gamma=1.3,
-        cat_idxs=[],
-        cat_dims=[],
-        cat_emb_dim=1,
-        n_independent=2,
-        n_shared=2,
-        epsilon=1e-15,
-        virtual_batch_size=128,
-        momentum=0.02,
-        mask_type="sparsemax",
-        n_shared_decoder=1,
-        n_indep_decoder=1,
-    ):
-        super(TabNetPretraining, self).__init__()
-
-        self.cat_idxs = cat_idxs or []
-        self.cat_dims = cat_dims or []
-        self.cat_emb_dim = cat_emb_dim
+        input_dim: int,
+        pretraining_ratio: float = 0.2,
+        n_d: int = 8,
+        n_a: int = 8,
+        n_steps: int = 3,
+        gamma: float = 1.3,
+        cat_idxs: Optional[list] = None,
+        cat_dims: Optional[list] = None,
+        cat_emb_dim: int = 1,
+        n_independent: int = 2,
+        n_shared: int = 2,
+        epsilon: float = 1e-15,
+        virtual_batch_size: int = 128,
+        momentum: float = 0.02,
+        mask_type: str = "sparsemax",
+        n_shared_decoder: int = 1,
+        n_indep_decoder: int = 1,
+        grouped_features: Optional[list[list[int]]] = None,
+        optim_params: Optional[dict] = None,
+        scheduler_params: Optional[dict] = None,
+        genes: Optional[list[str]] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__()
+        self.save_hyperparameters(ignore=["genes"])
 
         self.input_dim = input_dim
-        self.n_d = n_d
-        self.n_a = n_a
-        self.n_steps = n_steps
-        self.gamma = gamma
-        self.epsilon = epsilon
-        self.n_independent = n_independent
-        self.n_shared = n_shared
-        self.mask_type = mask_type
-        self.pretraining_ratio = pretraining_ratio
-        self.n_shared_decoder = n_shared_decoder
-        self.n_indep_decoder = n_indep_decoder
+        self.genes = genes
 
-        if self.n_steps <= 0:
-            raise ValueError("n_steps should be a positive integer.")
-        if self.n_independent == 0 and self.n_shared == 0:
-            raise ValueError("n_shared and n_independent can't be both zero.")
+        cat_idxs = cat_idxs or []
+        cat_dims = cat_dims or []
 
-        self.virtual_batch_size = virtual_batch_size
-        self.embedder = EmbeddingGenerator(input_dim, cat_dims, cat_idxs, cat_emb_dim)
-        self.post_embed_dim = self.embedder.post_embed_dim
+        group_attention_matrix = create_group_matrix(
+            grouped_features if grouped_features is not None else [],
+            input_dim,
+        )
 
-        self.masker = RandomObfuscator(self.pretraining_ratio)
-        self.encoder = TabNetEncoder(
-            input_dim=self.post_embed_dim,
-            output_dim=self.post_embed_dim,
+        self.network = TabNetPretraining(
+            input_dim=input_dim,
+            pretraining_ratio=pretraining_ratio,
             n_d=n_d,
             n_a=n_a,
             n_steps=n_steps,
             gamma=gamma,
+            cat_idxs=cat_idxs,
+            cat_dims=cat_dims,
+            cat_emb_dim=cat_emb_dim,
             n_independent=n_independent,
             n_shared=n_shared,
             epsilon=epsilon,
             virtual_batch_size=virtual_batch_size,
             momentum=momentum,
             mask_type=mask_type,
+            n_shared_decoder=n_shared_decoder,
+            n_indep_decoder=n_indep_decoder,
+            group_attention_matrix=group_attention_matrix,
         )
 
-        self.decoder = TabNetDecoder(
-            self.post_embed_dim,
-            n_d=n_d,
-            n_steps=n_steps,
-            n_independent=self.n_indep_decoder,
-            n_shared=self.n_shared_decoder,
-            virtual_batch_size=virtual_batch_size,
-            momentum=momentum,
-        )
+        self.optim_params = optim_params or {
+            "optimizer": torch.optim.Adam,
+            "lr": 2e-2,
+            "weight_decay": 1e-5,
+        }
+        self.scheduler_params = scheduler_params
 
-    def forward(self, x):
-        embedded_x = self.embedder(x)
-        if self.training:
-            masked_x, obf_vars = self.masker(embedded_x)
-            # set prior of encoder with obf_mask
-            prior = 1 - obf_vars
-            steps_out, _ = self.encoder(masked_x, prior=prior)
-            res = self.decoder(steps_out)
-            return res, embedded_x, obf_vars
-        else:
-            steps_out, _ = self.encoder(embedded_x)
-            res = self.decoder(steps_out)
-            return res, embedded_x, torch.ones(embedded_x.shape).to(x.device)
+    # ------------------------------------------------------------------
+    # Standard Lightning hooks
+    # ------------------------------------------------------------------
 
-    def forward_masks(self, x):
-        embedded_x = self.embedder(x)
-        return self.encoder.forward_masks(embedded_x)
+    def forward(self, x: torch.Tensor):
+        return self.network(x)
+
+    def _step(self, batch) -> torch.Tensor:
+        # The supervised DataModule yields (features, labels). Pretraining
+        # is unsupervised so we drop the label component.
+        x = batch[0] if isinstance(batch, (list, tuple)) else batch
+        x = x.float()
+        y_pred, embedded_x, obf_vars = self.network(x)
+        return unsupervised_reconstruction_loss(y_pred, embedded_x, obf_vars)
 
     def training_step(self, batch, batch_idx):
-        y, y_hat, loss = self._step(batch)
-
-        self.log("train_loss", loss, logger=True, on_epoch=True, on_step=True)
-        self._compute_metrics(y_hat, y, "train")
-
+        loss = self._step(batch)
+        self.log("pretrain_loss", loss, on_epoch=True, on_step=True, prog_bar=True)
         return loss
 
-    def _compute_metrics(
-        self,
-        y_hat: torch.Tensor,
-        y: torch.Tensor,
-        tag: str,
-        on_epoch=True,
-        on_step=False,
-    ):
-        val = metric(y_hat, y, average="weighted", num_classes=self.output_dim)
+    def validation_step(self, batch, batch_idx):
+        loss = self._step(batch)
+        self.log("val_pretrain_loss", loss, on_epoch=True, on_step=False, prog_bar=True)
+        return loss
 
-        self.log(
-            f"Reconstuction loss",
-            val,
-            on_epoch=on_epoch,
-            on_step=on_step,
-            logger=True,
-        )
+    def configure_optimizers(self):
+        # Same defensive-copy pattern as SIMSClassifier so a second
+        # configure_optimizers call (e.g. resuming a run) doesn't crash.
+        optim_params = dict(self.optim_params)
+        optimizer_cls = optim_params.pop("optimizer", torch.optim.Adam)
+        optimizer = optimizer_cls(self.parameters(), **optim_params)
+
+        if self.scheduler_params is None:
+            return optimizer
+
+        scheduler_params = dict(self.scheduler_params)
+        scheduler_cls = scheduler_params.pop("scheduler")
+        scheduler = scheduler_cls(optimizer, **scheduler_params)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "pretrain_loss",
+        }
 
 
-def pretrain_model(
-    datamodule,
-    model,
-    trainer,
-):
+# ---------------------------------------------------------------------------
+# Weight transfer: pretrainer -> SIMSClassifier
+# ---------------------------------------------------------------------------
+
+
+def transfer_pretrained_weights(classifier, pretrainer: SIMSPretrainer) -> int:
+    """Copy encoder + embedder weights from a pretrainer into a classifier.
+
+    Mirrors the algorithm used by :func:`pytorch_tabnet.abstract_model.
+    TabModel.load_weights_from_unsupervised`. Encoder/embedder layers from
+    the pretrainer's ``TabNetPretraining`` network are mapped onto the
+    corresponding layers inside the classifier's ``TabNet`` network. Layers
+    that exist only in the classifier (e.g. the supervised classification
+    head) are left at their random initialization.
+
+    Returns the number of tensors that were transferred, for logging.
     """
-    Pretrain model via random masking or denoising
+    target_state = deepcopy(classifier.network.state_dict())
+    source_state = pretrainer.network.state_dict()
+    transferred = 0
 
-    :param datamodule: Datamodule to train model on
-    :type datamodule: pl.DataModule
-    :param model: Model to train on
-    :type model: Model
-    :param trainer: PyTorch Lightning trainer used to train model
-    :type trainer: pl.LightningTrainer
-    """
+    for source_key, source_value in source_state.items():
+        # The supervised TabNet wraps its encoder under `tabnet.`, so encoder.*
+        # in the pretrainer maps to tabnet.encoder.* in the classifier.
+        # Embedder layers keep the same path.
+        if source_key.startswith("encoder"):
+            target_key = f"tabnet.{source_key}"
+        elif source_key.startswith("embedder"):
+            target_key = source_key
+        else:
+            # decoder, masker, etc. — only meaningful at pretraining time.
+            continue
 
-    pass
+        target_tensor = target_state.get(target_key)
+        if target_tensor is None:
+            continue
+        if target_tensor.shape != source_value.shape:
+            # Architectural mismatch (different n_d, n_a, n_steps...).
+            # Skip rather than crash so partial transfer still works.
+            continue
+        target_state[target_key] = source_value.clone()
+        transferred += 1
+
+    classifier.network.load_state_dict(target_state, strict=False)
+    return transferred

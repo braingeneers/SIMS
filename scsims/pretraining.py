@@ -143,6 +143,16 @@ class SIMSPretrainer(pl.LightningModule):
         cat_idxs = cat_idxs or []
         cat_dims = cat_dims or []
 
+        # NOTE: SIMSClassifier (the supervised path) builds the
+        # group_attention_matrix as a sparse identity to avoid the
+        # 4.7 GB allocation that pytorch_tabnet's create_group_matrix
+        # incurs for 34k-input single-cell models. We can't do the same
+        # here because TabNetPretraining performs an `> 0` comparison
+        # on group_attention_matrix internally, which is not implemented
+        # for any sparse layout (COO/CSR/CSC) as of pytorch-tabnet 4.1
+        # and torch 2.11. Pretraining is a long-running training job
+        # typically run on workstations with plenty of RAM, so the dense
+        # cost is acceptable here.
         group_attention_matrix = create_group_matrix(
             grouped_features if grouped_features is not None else [],
             input_dim,

@@ -99,14 +99,35 @@ class SIMSClassifier(pl.LightningModule):
             }
         )
 
-        # pytorch-tabnet >= 4.0 added a `group_attention_matrix` parameter and
-        # the default `[]` triggers a crash inside EmbeddingGenerator. Build
-        # the identity-style matrix here so each gene is its own group when
-        # the user doesn't supply explicit feature groupings.
-        group_attention_matrix = create_group_matrix(
-            grouped_features if grouped_features is not None else [],
-            input_dim,
-        )
+        # pytorch-tabnet >= 4.0 added a `group_attention_matrix` parameter
+        # and the default `[]` triggers a crash inside EmbeddingGenerator.
+        # We need to supply *something*; the natural choice is a per-gene
+        # identity matrix (each gene is its own group).
+        #
+        # `pytorch_tabnet.utils.create_group_matrix` returns a *dense*
+        # (input_dim, input_dim) tensor, which is catastrophic for the
+        # large single-cell models scsims is used for: a 34k-input model
+        # allocates ~4.7 GB just for the identity. We construct a sparse
+        # identity directly via sparse_coo_tensor, which never materializes
+        # the dense form (~5 MB total instead of 4.7 GB). TabNet accepts
+        # sparse `group_attention_matrix` natively.
+        #
+        # NOTE: torch.eye(n).to_sparse() also allocates the dense form first
+        # and is just as bad as create_group_matrix. Build the sparse tensor
+        # from indices/values directly.
+        if grouped_features:
+            group_attention_matrix = create_group_matrix(grouped_features, input_dim)
+        else:
+            diag_idx = torch.arange(input_dim, dtype=torch.long).unsqueeze(0).repeat(2, 1)
+            # is_coalesced=True silences the "sparse invariant checks
+            # implicitly disabled" UserWarning. The diagonal we're building
+            # is by construction already coalesced (sorted, unique indices).
+            group_attention_matrix = torch.sparse_coo_tensor(
+                indices=diag_idx,
+                values=torch.ones(input_dim),
+                size=(input_dim, input_dim),
+                is_coalesced=True,
+            )
 
         print("Initializing network")
         self.network = TabNet(
@@ -128,8 +149,8 @@ class SIMSClassifier(pl.LightningModule):
             group_attention_matrix=group_attention_matrix,
         )
 
-        print(f"Initializing explain matrix")
         if not no_explain:
+            print("Initializing explain matrix")
             self.reducing_matrix = create_explain_matrix(
                 self.network.input_dim,
                 self.network.cat_emb_dim,

@@ -1,27 +1,24 @@
-from functools import partial
+import os
 from typing import Any, Callable, Dict, Union
 
-import os
 import anndata as an
+import lightning.pytorch as pl
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-from pytorch_tabnet.tab_network import TabNet
-from pytorch_tabnet.utils import create_explain_matrix
-from scipy.sparse import csc_matrix
-from torchmetrics.functional.classification.stat_scores import _stat_scores_update
-from tqdm import tqdm
 import torch.utils.data
-from scipy.sparse import csr_matrix
+from pytorch_tabnet.tab_network import TabNet
+from pytorch_tabnet.utils import create_explain_matrix, create_group_matrix
+from scipy.sparse import csc_matrix, csr_matrix
+from sklearn.preprocessing import LabelEncoder
+from torchmetrics import Accuracy, F1Score, MetricCollection, Precision, Recall, Specificity
+from torchmetrics.functional import stat_scores
+from tqdm import tqdm
+
 from scsims.data import CollateLoader
 from scsims.inference import DatasetForInference
 from scsims.temperature_scaling import _ECELoss
-from torchmetrics import Accuracy, F1Score, Precision, Recall, Specificity
-from sklearn.preprocessing import LabelEncoder
-
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class SIMSClassifier(pl.LightningModule):
     def __init__(
@@ -51,6 +48,7 @@ class SIMSClassifier(pl.LightningModule):
         genes: list[str] = None,
         cells: list[str] = None,
         label_encoder: LabelEncoder = None,
+        grouped_features: list[list[int]] = None,
         *args,
         **kwargs,
     ) -> None:
@@ -73,10 +71,14 @@ class SIMSClassifier(pl.LightningModule):
         if pretrained is not None:
             self._from_pretrained(**pretrained.get_params())
 
-        self.metrics = {
-            "train": {x: y.to(device) for x, y in aggregate_metrics(num_classes=self.output_dim).items()},
-            "val": {x: y.to(device) for x, y in aggregate_metrics(num_classes=self.output_dim).items()},
-        }
+        # MetricCollections are registered as submodules so Lightning moves them
+        # to the right device automatically. No more manual .to(device).
+        base_metrics = aggregate_metrics(num_classes=self.output_dim)
+        self.train_metrics = MetricCollection(base_metrics, prefix="train_")
+        self.val_metrics = MetricCollection(
+            {k: v.clone() for k, v in base_metrics.items()},
+            prefix="val_",
+        )
 
         self.optim_params = (
             optim_params
@@ -97,7 +99,16 @@ class SIMSClassifier(pl.LightningModule):
             }
         )
 
-        print(f"Initializing network")
+        # pytorch-tabnet >= 4.0 added a `group_attention_matrix` parameter and
+        # the default `[]` triggers a crash inside EmbeddingGenerator. Build
+        # the identity-style matrix here so each gene is its own group when
+        # the user doesn't supply explicit feature groupings.
+        group_attention_matrix = create_group_matrix(
+            grouped_features if grouped_features is not None else [],
+            input_dim,
+        )
+
+        print("Initializing network")
         self.network = TabNet(
             input_dim=input_dim,
             output_dim=output_dim,
@@ -114,6 +125,7 @@ class SIMSClassifier(pl.LightningModule):
             virtual_batch_size=virtual_batch_size,
             momentum=momentum,
             mask_type=mask_type,
+            group_attention_matrix=group_attention_matrix,
         )
 
         print(f"Initializing explain matrix")
@@ -125,7 +137,6 @@ class SIMSClassifier(pl.LightningModule):
                 self.network.post_embed_dim,
             )
 
-        self._inference_device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.temperature = torch.nn.Parameter(torch.ones(1) * 1.5)
 
     def forward(self, x):
@@ -133,81 +144,58 @@ class SIMSClassifier(pl.LightningModule):
         # temp scaling will be 1 so logits wont change until model is calibrated
         return self.temperature_scale(logits), M_loss
 
-    def _step(self, batch, tag):
+    def _shared_step(self, batch):
         x, y = batch
         logits, M_loss = self.network(x)
 
         loss = self.loss(logits, y, weight=self.weights)
         loss = loss - self.lambda_sparse * M_loss
 
-        # take softmax for metrics
+        # Take softmax for metrics. For binary tasks, torchmetrics expects the
+        # positive-class probability vector.
         probs = logits.softmax(dim=-1)
-
-        # if binary, probs will be (batch, 2), so take second column
         if probs.shape[-1] == 2:
             probs = probs[:, 1]
 
-        tp, fp, _, fn = _stat_scores_update(
-            preds=logits,
-            target=y,
-            num_classes=self.output_dim,
-            reduce="macro",
-        )
+        return loss, probs, y
 
-        return {
-            "loss": loss,
-            "tp": tp,
-            "fp": fp,
-            "fn": fn,
-            "probs": probs,
-        }
-
-    # Calculations on step
     def training_step(self, batch, batch_idx):
-        results = self._step(batch, "train")
-        self.log(f"train_loss", results["loss"], on_epoch=True, on_step=True)
-        for name, metric in self.metrics["train"].items():
-            value = metric(results["probs"], batch[1])
-            self.log(f"train_{name}", value=value)
-
-        return results["loss"]
+        loss, probs, y = self._shared_step(batch)
+        self.log("train_loss", loss, on_epoch=True, on_step=True, prog_bar=True)
+        # MetricCollection handles per-step accumulation; .compute() at epoch end.
+        self.train_metrics.update(probs, y)
+        return loss
 
     def on_train_epoch_end(self) -> None:
-        for name, metric in self.metrics["train"].items():
-            value = metric.compute()
-            self.log(f"train_{name}", value=value)
-            metric.reset() # inplace
+        self.log_dict(self.train_metrics.compute())
+        self.train_metrics.reset()
 
     def validation_step(self, batch, batch_idx):
-        results = self._step(batch, "val")
-        self.log(f"val_loss", results["loss"], on_epoch=True, on_step=True)
-        for name, metric in self.metrics["val"].items():
-            value = metric(results["probs"], batch[1])
-            self.log(f"val_{name}", value=value)
-
-        return results["loss"]
+        loss, probs, y = self._shared_step(batch)
+        self.log("val_loss", loss, on_epoch=True, on_step=True, prog_bar=True)
+        self.val_metrics.update(probs, y)
+        return loss
 
     def on_validation_epoch_end(self) -> None:
-        for name, metric in self.metrics["val"].items():
-            value = metric.compute()
-            self.log(f"val_{name}", value=value)
-            metric.reset()
+        self.log_dict(self.val_metrics.compute())
+        self.val_metrics.reset()
 
     def configure_optimizers(self):
-        if "optimizer" in self.optim_params:
-            optimizer = self.optim_params.pop("optimizer")
-            optimizer = optimizer(self.parameters(), **self.optim_params)
-        else:
-            optimizer = torch.optim.Adam(self.parameters(), **self.optim_params)
+        # Copy so configure_optimizers() can be called more than once safely
+        # (e.g. when re-fitting a model in the same process). Previously the
+        # `pop()` calls mutated `self.optim_params` and broke the second call.
+        optim_params = dict(self.optim_params)
+        optimizer_cls = optim_params.pop("optimizer", torch.optim.Adam)
+        optimizer = optimizer_cls(self.parameters(), **optim_params)
         print(f"Initializing with {optimizer = }")
-
-        if self.scheduler_params is not None:
-            scheduler = self.scheduler_params.pop("scheduler")
-            scheduler = scheduler(optimizer, **self.scheduler_params)
-            print(f"Initializating with {scheduler = }")
 
         if self.scheduler_params is None:
             return optimizer
+
+        scheduler_params = dict(self.scheduler_params)
+        scheduler_cls = scheduler_params.pop("scheduler")
+        scheduler = scheduler_cls(optimizer, **scheduler_params)
+        print(f"Initializing with {scheduler = }")
 
         return {
             "optimizer": optimizer,
@@ -331,7 +319,46 @@ class SIMSClassifier(pl.LightningModule):
                 self._feature_importances = f
             return f
 
-    def predict(self, inference_data: Union[str, an.AnnData, np.array], batch_size=32, num_workers=4, rows=None, currgenes=None, refgenes=None, **kwargs):
+    def predict(
+        self,
+        inference_data: Union[str, an.AnnData, np.ndarray],
+        batch_size: int = 32,
+        num_workers: int = 4,
+        top_k: int = 3,
+        rows=None,
+        currgenes=None,
+        refgenes=None,
+        **kwargs,
+    ) -> pd.DataFrame:
+        """Run inference and return the top-``top_k`` predicted labels per cell.
+
+        Parameters
+        ----------
+        inference_data:
+            An :class:`anndata.AnnData`, the path to an ``.h5ad`` file, or a
+            raw numpy array of shape ``(n_cells, n_genes)``.
+        batch_size:
+            Inference batch size.
+        num_workers:
+            DataLoader worker count.
+        top_k:
+            Number of ranked predictions to return per cell. Capped at the
+            number of training classes. Defaults to ``3``.
+        rows, currgenes, refgenes:
+            Forwarded to :meth:`_parse_data` for partial-row and gene-alignment
+            workflows.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per cell with columns ``pred_0`` … ``pred_{top_k-1}`` (the
+            decoded label strings) and ``prob_0`` … ``prob_{top_k-1}`` (the
+            corresponding softmax probabilities).
+        """
+        if top_k < 1:
+            raise ValueError(f"top_k must be >= 1, got {top_k}")
+        effective_top_k = min(top_k, len(self.label_encoder.classes_))
+
         print("Parsing inference data...")
         loader = self._parse_data(
             inference_data,
@@ -340,65 +367,77 @@ class SIMSClassifier(pl.LightningModule):
             rows=rows,
             currgenes=currgenes,
             refgenes=refgenes,
-            **kwargs
+            **kwargs,
         )
 
-        # initialize arrays in memory and fill with nans to start
-        # this makes it easier to see bugs/wrong predictions than filling zeros
-        num_cls_to_save = min(3, len(self.label_encoder.classes_))
-        preds = np.empty((len(loader.dataset), num_cls_to_save))
-        preds[:] = np.nan
-
-        all_labels = np.empty(len(loader.dataset))
-        all_labels[:] = np.nan
-
-        # save probs 
-        probs = np.empty((len(loader.dataset), num_cls_to_save))
-        probs[:] = np.nan
+        n_rows = len(loader.dataset)
+        preds = np.full((n_rows, effective_top_k), np.nan)
+        probs = np.full((n_rows, effective_top_k), np.nan)
+        all_labels = np.full(n_rows, np.nan)
 
         prev_network_state = self.network.training
         self.network.eval()
 
         # batch size might differ if user passes in a dataloader
-        batch_size = loader.batch_size
-        for idx, X in enumerate(tqdm(loader)):
-            # Some dataloaders will have all_labels, handle this case
-            top_probs, top_preds, label = self.predict_step(batch=X, batch_idx=idx)
-            all_labels[idx * batch_size : (idx + 1) * batch_size] = label
-            preds[idx * batch_size : (idx + 1) * batch_size] = top_preds
-            probs[idx * batch_size : (idx + 1) * batch_size] = top_probs
+        loader_batch_size = loader.batch_size
+        with torch.no_grad():
+            for idx, batch in enumerate(tqdm(loader)):
+                top_probs, top_preds, label = self._inference_batch(
+                    batch, top_k=effective_top_k
+                )
+                start = idx * loader_batch_size
+                stop = start + top_preds.shape[0]
+                preds[start:stop] = top_preds
+                probs[start:stop] = top_probs
+                if label is not None:
+                    all_labels[start:stop] = label
 
-        preds = pd.DataFrame(preds).astype(int)
-
-        preds = preds.rename(columns={i: f"pred_{i}" for i in range(preds.shape[1])})
-        preds = preds.apply(lambda x: self.label_encoder.inverse_transform(x))
-
-        probs = pd.DataFrame(probs)
-        probs = probs.rename(columns={i: f"prob_{i}" for i in range(probs.shape[1])})
-
-        final = pd.concat([preds, probs], axis=1)
-
-        if not np.all(np.isnan(all_labels)):
-            final["label"] = all_labels
-
-        # if network was in training mode before inference, set it back to that
+        # restore previous training mode
         if prev_network_state:
             self.network.train()
 
+        preds_df = pd.DataFrame(
+            preds.astype(int),
+            columns=[f"pred_{i}" for i in range(effective_top_k)],
+        )
+        preds_df = preds_df.apply(lambda c: self.label_encoder.inverse_transform(c))
+
+        probs_df = pd.DataFrame(
+            probs,
+            columns=[f"prob_{i}" for i in range(effective_top_k)],
+        )
+
+        final = pd.concat([preds_df, probs_df], axis=1)
+        if not np.all(np.isnan(all_labels)):
+            final["label"] = all_labels
         return final
 
-    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
-        if len(batch) == 2:
+    def _inference_batch(self, batch, top_k: int):
+        """Run a single inference batch and return ``(probs, preds, labels)``.
+
+        Internal helper used by :meth:`predict`. Kept separate from
+        :meth:`predict_step` (which is the Lightning hook) so that ``top_k``
+        can be passed in without conflicting with Lightning's fixed signature.
+        """
+        if isinstance(batch, (list, tuple)) and len(batch) == 2:
             data, label = batch
+            label = label.detach().cpu().numpy() if torch.is_tensor(label) else label
         else:
             data, label = batch, None
         data = data.float()
-        res = self(data)[0]
-        num_sample = min(len(self.label_encoder.classes_), 3)
-        probs, top_preds = res.topk(num_sample, axis=1)  # to get indices
+        logits = self(data)[0]
+        probs, preds = logits.topk(top_k, dim=1)
         probs = probs.softmax(dim=-1)
+        return (
+            probs.detach().cpu().numpy(),
+            preds.detach().cpu().numpy(),
+            label,
+        )
 
-        return probs.detach().cpu().numpy(), top_preds.detach().cpu().numpy(), label
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+        """Lightning ``predict_step`` hook. Returns top-3 by default."""
+        top_k = min(3, len(self.label_encoder.classes_))
+        return self._inference_batch(batch, top_k=top_k)
  
     def temperature_scale(self, logits):
         """
@@ -474,21 +513,31 @@ def median_f1(tps, fps, fns):
     return np.nanmedian(f1s)
 
 
-def aggregate_metrics(num_classes) -> Dict[str, Callable]:
-    task = "binary" if num_classes == 2 else "multiclass"
-    num_classes = None if num_classes == 2 else num_classes
+def aggregate_metrics(num_classes: int) -> Dict[str, Callable]:
+    """Build the standard scsims metric dict for either binary or multiclass tasks.
 
-    metrics = {
-        "micro_accuracy": Accuracy(task=task, num_classes=num_classes, average="micro"),
-        "macro_accuracy": Accuracy(task=task, num_classes=num_classes, average="macro"),
-        "weighted_accuracy": Accuracy(task=task, num_classes=num_classes, average="weighted"),
-        "precision": Precision(task=task, num_classes=num_classes, average="macro"),
-        "recall": Recall(task=task, num_classes=num_classes, average="macro"),
-        "f1": F1Score(task=task, num_classes=num_classes, average="macro"),
-        "specificity": Specificity(task=task, num_classes=num_classes, average="macro"),
+    torchmetrics >= 1.0 rejects ``average=`` for binary tasks, so we branch on
+    the task type and only pass the kwargs that are valid for each.
+    """
+    if num_classes == 2:
+        return {
+            "accuracy": Accuracy(task="binary"),
+            "precision": Precision(task="binary"),
+            "recall": Recall(task="binary"),
+            "f1": F1Score(task="binary"),
+            "specificity": Specificity(task="binary"),
+        }
+
+    common = {"task": "multiclass", "num_classes": num_classes}
+    return {
+        "micro_accuracy": Accuracy(average="micro", **common),
+        "macro_accuracy": Accuracy(average="macro", **common),
+        "weighted_accuracy": Accuracy(average="weighted", **common),
+        "precision": Precision(average="macro", **common),
+        "recall": Recall(average="macro", **common),
+        "f1": F1Score(average="macro", **common),
+        "specificity": Specificity(average="macro", **common),
     }
-
-    return metrics
 
 
 

@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scsims"
+version = "4.0.0"
+description = "Scalable, Interpretable Deep Learning for Single-Cell RNA-seq Classification"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Julian Lehrer", email = "jmlehrer@ucsc.edu" },
+]
+maintainers = [
+    { name = "Jesus Gonzalez-Ferrer" },
+]
+keywords = ["single-cell", "rna-seq", "tabnet", "deep-learning", "classification"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+    "torch>=2.2",
+    "lightning>=2.2",
+    "torchmetrics>=1.0",
+    "pytorch-tabnet>=4.1",
+    "anndata>=0.10",
+    "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+s3 = ["boto3>=1.34"]
+test = [
+    "pytest>=7",
+    "scanpy>=1.10",
+]
+dev = [
+    "scsims[test,s3]",
+    "ruff>=0.5",
+    "build>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/braingeneers/SIMS"
+Repository = "https://github.com/braingeneers/SIMS"
+Issues = "https://github.com/braingeneers/SIMS/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["scsims*"]
+exclude = ["tests*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

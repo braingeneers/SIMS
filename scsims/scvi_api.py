@@ -2,15 +2,32 @@ import pathlib
 from typing import Union
 
 import anndata as an
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, Timer, EarlyStopping
+import lightning.pytorch as pl
+import pandas as pd
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, Timer
+from sklearn.preprocessing import LabelEncoder
 
 from scsims.lightning_train import DataModule
 from scsims.model import SIMSClassifier
-import pandas as pd 
-from sklearn.preprocessing import LabelEncoder
 
 here = pathlib.Path(__file__).parent.absolute()
+
+
+def _load_sims_checkpoint(weights_path: str, **kwargs):
+    """Load a SIMS checkpoint, tolerating legacy artifacts.
+
+    SIMS checkpoints serialize a ``LabelEncoder`` and numpy arrays inside
+    Lightning hyperparameters. As of torch >= 2.6, ``torch.load`` defaults
+    to ``weights_only=True`` and rejects those globals. SIMS checkpoints
+    are trusted artifacts (produced by the user's own training run, or
+    the curated bundle shipped with sims_app), so it's appropriate to
+    opt out of weights-only mode here. We do this in exactly one place
+    so the rest of the application keeps the safer torch.load default.
+    """
+    # Caller may already have set weights_only/strict explicitly; respect it.
+    kwargs.setdefault("weights_only", False)
+    kwargs.setdefault("strict", False)
+    return SIMSClassifier.load_from_checkpoint(weights_path, **kwargs)
 
 class UnconfiguredModelError(Exception):
     pass
@@ -25,29 +42,33 @@ class SIMS:
         **kwargs,
     ) -> None:
         if weights_path is not None:
-            self.model = SIMSClassifier.load_from_checkpoint(weights_path, **kwargs, strict=False)
+            self.model = _load_sims_checkpoint(weights_path, **kwargs)
 
         self.datamodule = DataModule(data=data, class_label=class_label, **kwargs)
 
         for att, value in self.datamodule.__dict__.items():
             setattr(self, att, value)
 
+    # Map of model_size string -> (n_d, n_a) for the underlying TabNet.
+    _MODEL_SIZE_PRESETS = {
+        "tall": (8, 8),
+        "grande": (32, 32),
+        "venti": (64, 64),
+        "trenta": (128, 128),
+    }
+
     def setup_model(self, *args, **kwargs):
-        print('Setting up model ...')
-        if 'model_size' in kwargs:
-            assert kwargs['model_size'] in ["tall", "grande", "venti", "trenta"], "if specified, model_size must be one of 'big', 'medium', or 'small'"
-            if kwargs['model_size'] == "trenta":
-                kwargs['n_a'] = 128
-                kwargs['n_d'] = 128
-            if kwargs['model_size'] == "venti":
-                kwargs['n_a'] = 64
-                kwargs['n_d'] = 64
-            if kwargs['model_size'] == "grande":
-                kwargs['n_a'] = 32
-                kwargs['n_d'] = 32
-            if kwargs['model_size'] == "tall":
-                kwargs['n_a'] = 8
-                kwargs['n_d'] = 8
+        print("Setting up model ...")
+        model_size = kwargs.pop("model_size", None)
+        if model_size is not None:
+            if model_size not in self._MODEL_SIZE_PRESETS:
+                raise ValueError(
+                    f"model_size must be one of {sorted(self._MODEL_SIZE_PRESETS)}, "
+                    f"got {model_size!r}"
+                )
+            n_d, n_a = self._MODEL_SIZE_PRESETS[model_size]
+            kwargs["n_d"] = n_d
+            kwargs["n_a"] = n_a
 
         self.model = SIMSClassifier(
             input_dim=self.datamodule.input_dim, 

@@ -1,18 +1,20 @@
 import pathlib
+import warnings
 from functools import cached_property
 from typing import Optional
 
 import anndata as an
+import lightning.pytorch as pl
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
 import torch
 from sklearn.preprocessing import LabelEncoder
-
-from .data import generate_dataloaders
 from sklearn.utils.class_weight import compute_class_weight
 
+from .data import generate_dataloaders
+
 here = pathlib.Path(__file__).parent.absolute()
+
 
 class DataModule(pl.LightningDataModule):
     def __init__(
@@ -20,14 +22,24 @@ class DataModule(pl.LightningDataModule):
         data: an.AnnData = None,
         class_label: str = None,
         test_size: float = 0.2,
-        batch_size = 32,
-        num_workers = 0,
-        device=("cuda:0" if torch.cuda.is_available() else None),
+        batch_size: int = 32,
+        num_workers: int = 0,
+        device=None,  # deprecated, kept for backwards compatibility
         *args,
         **kwargs,
     ):
         super().__init__()
-        self.device = device
+        if device is not None:
+            warnings.warn(
+                "DataModule(device=...) is deprecated and ignored. Lightning's "
+                "Trainer manages device placement automatically; pass "
+                "`accelerator=` and `devices=` to `pl.Trainer` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        # NOTE: don't shadow LightningDataModule.device. Class weights are
+        # constructed on CPU and Lightning will move tensors to the active
+        # accelerator at training time.
         self.class_label = class_label
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -85,8 +97,7 @@ class DataModule(pl.LightningDataModule):
                 classes=np.unique(labels),
                 class_weight="balanced",
             )
-        ).float().to(self.device)
-
+        ).float()
 
         self.setuped = True
 

@@ -2,8 +2,8 @@ import os
 from typing import *
 
 import boto3
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 class UploadCallback(pl.callbacks.Callback):
     """Custom PyTorch callback for uploading the best model checkpoint to a S3 bucket.

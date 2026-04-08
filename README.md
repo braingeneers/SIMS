@@ -7,13 +7,40 @@ SIMS takes in a list of arbitrarily many expression matrices along with their co
 The code is run with `python`. To use the package, we recommend using a virtual environment such as [miniconda](https://docs.conda.io/en/latest/miniconda.html) which will allow you to install packages without harming your system `python`.  
 
 ## Installation
-If using conda, run 
-1. Create a new virtual environment with `conda create --name=<NAME> python=3.9`
-2. Enter into your virtual environment with `conda activate NAME`
 
-Otherwise, enter your virtual environment of choice and
-1. Install the SIMS package with `pip install --use-pep517 git+https://github.com/braingeneers/SIMS.git`
-2. Set up the model training code in a `MYFILE.py` file, and run it with `python MYFILE.py`. A tutorial on how to set up training code is shown below.
+scsims requires **Python 3.10 or newer**. We recommend a clean virtual
+environment.
+
+```bash
+# conda
+conda create -n sims python=3.11
+conda activate sims
+
+# or venv
+python3.11 -m venv .venv
+source .venv/bin/activate
+```
+
+Install the package:
+
+```bash
+# Latest stable release from PyPI
+pip install scsims
+
+# Or directly from GitHub
+pip install git+https://github.com/braingeneers/SIMS.git
+
+# With the optional S3 model upload callback
+pip install "scsims[s3]"
+
+# For development (pytest, ruff, build)
+pip install -e ".[dev]"
+```
+
+> **Upgrading from 3.x?** See [`MIGRATION.md`](MIGRATION.md). The most
+> common change is updating `predict()` call sites to use the canonical
+> `pred_0` / `prob_0` column names instead of the (always-broken) `first_pred`
+> / `first_prob` references.
 
 ## Training and inference
 The sims library uses a cell-by-gene matrix. This means our input data to the model should be 
@@ -21,9 +48,9 @@ an (M, N) matrix of M cells with expression levels across N different genes. The
 
 To train a model, we can set up a SIMS class in the following way:
 
-```python 
+```python
 from scsims import SIMS
-from pytorch_lightning.loggers import WandbLogger
+from lightning.pytorch.loggers import WandbLogger
 import scanpy as sc
 
 logger = WandbLogger(offline=True)
@@ -59,19 +86,62 @@ sc.pp.normalize_total(unlabeled_data)#Normalize counts per cell
 sc.pp.log1p(unlabeled_data) ### Logarithmizing the data
 sc.pp.scale(unlabeled_data) #Scale mean to zero and variance to 1
 #Perform the predictions
-cell_predictions = sims.predict(unlabeled_data)
+cell_predictions = sims.predict(unlabeled_data, top_k=3)
+
+# `cell_predictions` is a pandas DataFrame with one row per input cell
+# and the following columns:
+#   pred_0, pred_1, pred_2  -- the top-3 predicted cell type labels
+#   prob_0, prob_1, prob_2  -- the corresponding softmax probabilities
+#
+# For "just give me the best label" use top_k=1:
+top1 = sims.predict(unlabeled_data, top_k=1)
+unlabeled_data.obs["sims_label"] = top1["pred_0"].values
+unlabeled_data.obs["sims_confidence"] = top1["prob_0"].values
 ```
 
-Finally, to look at the explainability of the model, we similarly run 
+Finally, to look at the explainability of the model, we similarly run
 ```python
-explainability_matrix = sims.explain('my/new/unlabeled.h5ad') # this can also be labeled data, of course 
+explainability_matrix, _labels = sims.explain('my/new/unlabeled.h5ad')  # also accepts an AnnData object
+```
+
+## Self-supervised pretraining (new in v4)
+
+scsims 4.0 ships a working implementation of TabNet's self-supervised
+pretraining (random feature obfuscation + reconstruction loss). The
+pretrained encoder warm-starts a downstream supervised classifier,
+which is useful when you have a large unlabeled corpus and a smaller
+labeled fine-tuning set.
+
+```python
+from scsims import SIMS
+import scanpy as sc
+
+unlabeled = sc.read_h5ad("big_unlabeled_corpus.h5ad")
+sims = SIMS(data=unlabeled, class_label="cell_type")  # label col is ignored at this stage
+
+# Stage 1: unsupervised pretraining. Cell type labels are not used.
+sims.pretrain(
+    pretraining_ratio=0.2,
+    accelerator="gpu",
+    devices=1,
+    max_epochs=50,
+)
+
+# Stage 2: supervised fine-tuning. SIMS automatically detects the
+# attached pretrainer and warm-starts the classifier from its encoder
+# weights before fitting.
+labeled = sc.read_h5ad("smaller_labeled_set.h5ad")
+sims = SIMS(data=labeled, class_label="cell_type")
+sims.load_pretrainer("./sims_pretrain_checkpoints/best.ckpt")
+sims.setup_trainer(accelerator="gpu", devices=1, max_epochs=20)
+sims.train()
 ```
 
 ## Custom training jobs / logging
-To customize the underlying `pl.Trainer` and SIMS model params, we can initialize the SIMS model like 
-```python 
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
+To customize the underlying `pl.Trainer` and SIMS model params, we can initialize the SIMS model like
+```python
+from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor
 from scsims import SIMS
 import anndata as an
 
@@ -89,7 +159,7 @@ sims.setup_trainer(
         ),
         LearningRateMonitor(logging_interval="epoch"),
     ],
-    num_epochs=100,
+    max_epochs=100,
 )
 sims.train()
 ```

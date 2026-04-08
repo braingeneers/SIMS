@@ -6,13 +6,13 @@ from .pretraining import SIMSPretrainer, transfer_pretrained_weights
 from .scvi_api import SIMS
 from .temperature_scaling import *
 
-# UploadCallback depends on boto3, which is an optional `s3` extra.
-# Will be relocated to scsims.contrib in v4.x; for now keep it importable
-# from the top level when boto3 is available, but don't crash without it.
-try:
-    from .networking import UploadCallback  # noqa: F401
-except ModuleNotFoundError:
-    UploadCallback = None  # type: ignore[assignment]
+# UploadCallback now lives in scsims.contrib (depends on the optional
+# `boto3`, install via `pip install scsims[s3]`). The legacy import path
+# `scsims.networking.UploadCallback` continues to work via a deprecation
+# shim and will be removed in scsims 5.0. We deliberately do NOT re-export
+# UploadCallback from the top-level scsims namespace anymore: callers
+# should import it explicitly from scsims.contrib so it's clear that the
+# `s3` extra is required.
 
 __version__ = "4.0.0"
 
@@ -21,7 +21,6 @@ __all__ = [
     "SIMSClassifier",
     "SIMSPretrainer",
     "DataModule",
-    "UploadCallback",
     "DatasetForInference",
     "transfer_pretrained_weights",
 ]

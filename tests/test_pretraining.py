@@ -96,6 +96,42 @@ def test_pretrain_warm_start_transfers_encoder_weights(synthetic_anndata, tmp_pa
         raise AssertionError("no shape-matching encoder keys to spot-check")
 
 
+def test_pretrain_on_truly_unlabeled_anndata(synthetic_anndata, tmp_path):
+    """`SIMS(data=adata)` (no class_label) should support pretraining on
+    a literally unlabeled AnnData. The 3.x API forced users to pass a
+    class_label even when pretraining ignored it; v4 cleaned that up."""
+    # Drop the labels column entirely so any code path that tries to
+    # read it would crash.
+    del synthetic_anndata.obs["blobs"]
+    assert "blobs" not in synthetic_anndata.obs.columns
+
+    sims = SIMS(data=synthetic_anndata)  # no class_label kwarg!
+    assert sims.datamodule.class_label is None
+    assert sims.datamodule.label_encoder is None
+    assert sims.datamodule.weights is None
+
+    sims.pretrain(
+        accelerator="cpu",
+        devices=1,
+        max_epochs=2,
+        enable_progress_bar=False,
+        logger=False,
+        checkpoint_dir=str(tmp_path / "pretrain"),
+    )
+    assert isinstance(sims.pretrainer, SIMSPretrainer)
+
+
+def test_train_without_class_label_raises_clear_error(synthetic_anndata):
+    """Calling .train() on a SIMS built without a class_label should raise
+    a ValueError that points users at the right API."""
+    import pytest
+
+    del synthetic_anndata.obs["blobs"]
+    sims = SIMS(data=synthetic_anndata)
+    with pytest.raises(ValueError, match="class_label"):
+        sims.train()
+
+
 def test_load_pretrainer_round_trip(synthetic_anndata, tmp_path):
     """Two-process workflow: pretrain in 'process A', save .ckpt, fresh
     SIMS in 'process B' loads it via load_pretrainer() and warm-starts
